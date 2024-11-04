@@ -17,10 +17,29 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-# Load credentials from environment variables for security
+# Load credentials
 email = "feigelluck@gmail.com"
 password = "Graphicart#1"
 
+def resource_path(relative_path):
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.abspath(relative_path)
+
+def setup_db():
+    conn = sqlite3.connect("GambioIDs.db")
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS gambioIDs (
+        gambioID INTEGER PRIMARY KEY,
+        bezeichnung TEXT,
+        artNr TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
 
 class GUI(QWidget):
     def __init__(self, scrape):
@@ -68,18 +87,12 @@ class GUI(QWidget):
             }
         }
 
-        self.setup_db()
         self.initUI()
-
-    def setup_db(self):
-        # Set up a read-only database connection for querying data
-        self.conn = sqlite3.connect("GambioIDs.db", uri=True)
-        self.c = self.conn.cursor()
 
     def initUI(self):
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
-        self.setWindowIcon(QIcon(self.resource_path('main_icon.ico')))
+        self.setWindowIcon(QIcon(resource_path('main_icon.ico')))
 
         main_layout = QVBoxLayout()
 
@@ -133,11 +146,6 @@ class GUI(QWidget):
         self.setLayout(main_layout)
         self.show()
 
-    def resource_path(self, relative_path):
-        if getattr(sys, 'frozen', False):
-            return os.path.join(sys._MEIPASS, relative_path)
-        return os.path.abspath(relative_path)
-
     def copy_to_clipboard(self):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.result_textbox.toPlainText())
@@ -164,17 +172,19 @@ class GUI(QWidget):
             return
 
         try:
-            query = "SELECT gambioID FROM gambioIDs WHERE artNr LIKE ?"
-            parameters = [f"{initials}%"]
+            with sqlite3.connect("GambioIDs.db") as conn:
+                c = conn.cursor()
+                query = "SELECT gambioID FROM gambioIDs WHERE artNr LIKE ?"
+                parameters = [f"{initials}%"]
 
-            if excluded_articles:
-                placeholders = ", ".join("?" for _ in excluded_articles)
-                query += f" AND artNr NOT IN ({placeholders})"
-                parameters.extend(excluded_articles)
+                if excluded_articles:
+                    placeholders = ", ".join("?" for _ in excluded_articles)
+                    query += f" AND artNr NOT IN ({placeholders})"
+                    parameters.extend(excluded_articles)
 
-            self.c.execute(query, parameters)
-            gambio_ids = [str(row[0]) for row in self.c.fetchall()]
-            self.result_textbox.setText("\n".join(gambio_ids))
+                c.execute(query, parameters)
+                gambio_ids = [str(row[0]) for row in c.fetchall()]
+                self.result_textbox.setText("\n".join(gambio_ids))
         except Exception as e:
             QMessageBox.critical(self, "Fehler", f"An error occurred when pulling from DB: {e}")
 
@@ -195,12 +205,7 @@ class ProgressWindow(QDialog):
     def __init__(self):
         super().__init__()
         self.initUI()
-        self.setWindowIcon(QIcon(self.resource_path('loading_icon.ico')))
-
-    def resource_path(self, relative_path):
-        if getattr(sys, 'frozen', False):
-            return os.path.join(sys._MEIPASS, relative_path)
-        return os.path.abspath(relative_path)
+        self.setWindowIcon(QIcon(resource_path('loading_icon.ico')))
 
     def initUI(self):
         self.setWindowTitle("Scraping Progress")
@@ -280,50 +285,35 @@ class Scrape:
         login_button.click()
 
     def navigate_gambio(self, progress_signal):
-        conn = sqlite3.connect("GambioIDs.db")
-        c = conn.cursor()
-        self.driver.get("https://www.graphicart.ch/shop/admin/validproducts.php")
-        self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, ".pageHeading")))
-        list_container = self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)")))
-        rows = list_container.find_elements(By.CSS_SELECTOR, "tr")[2:]
-        total_rows = len(rows)
+        with sqlite3.connect("GambioIDs.db") as conn:
+            c = conn.cursor()
+            self.driver.get("https://www.graphicart.ch/shop/admin/validproducts.php")
+            self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, ".pageHeading")))
+            list_container = self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)")))
+            rows = list_container.find_elements(By.CSS_SELECTOR, "tr")[2:]
+            total_rows = len(rows)
 
-        if total_rows == 0:
-            print("No rows found for scraping.")
-            return
+            if total_rows == 0:
+                print("No rows found for scraping.")
+                return
 
-        for index, row in enumerate(rows):
-            columns = row.find_elements(By.CSS_SELECTOR, "td")
-            gambio_id = columns[0].text
-            art_name = columns[1].text
-            art_nr = columns[2].text
-            c.execute("INSERT OR IGNORE INTO gambioIDs (gambioID, bezeichnung, artNr) VALUES (?, ?, ?)", (gambio_id, art_name, art_nr))
-            if index % 10 == 0 or index == total_rows - 1:
-                conn.commit()
-            progress_percentage = int((index + 1) / total_rows * 100)
-            progress_signal.emit(progress_percentage)
+            for index, row in enumerate(rows):
+                columns = row.find_elements(By.CSS_SELECTOR, "td")
+                gambio_id = columns[0].text
+                art_name = columns[1].text
+                art_nr = columns[2].text
+                c.execute("INSERT OR IGNORE INTO gambioIDs (gambioID, bezeichnung, artNr) VALUES (?, ?, ?)", (gambio_id, art_name, art_nr))
+                if index % 10 == 0 or index == total_rows - 1:
+                    conn.commit()
+                progress_percentage = int((index + 1) / total_rows * 100)
+                progress_signal.emit(progress_percentage)
 
-        conn.commit()
-        self.driver.quit()
-
-    def setup_db(self):
-        self.conn = sqlite3.connect("GambioIDs.db")
-        self.c = self.conn.cursor()
-        self.c.execute(
-            """
-            CREATE TABLE IF NOT EXISTS gambioIDs (
-            gambioID INTEGER PRIMARY KEY,
-            bezeichnung TEXT,
-            artNr TEXT
-            )
-            """
-        )
-        self.conn.commit()
-
+            conn.commit()
+            self.driver.quit()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    setup_db()
     scrape = Scrape()
-    scrape.setup_db()
     ex = GUI(scrape)
     sys.exit(app.exec())
