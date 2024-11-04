@@ -1,8 +1,40 @@
+"""
+Gambio ID Converter Application
+
+This application is a graphical user interface (GUI) tool built using PyQt6 that allows users to convert article
+numbers into Gambio IDs. It provides functionality for selecting product categories, excluding specific articles,
+and displaying the results of the conversion process. The application interacts with a SQLite database to store and
+retrieve Gambio IDs and utilizes Selenium for web scraping to gather product data from a specified website.
+
+Key Features:
+- User-friendly interface for selecting brands and categories.
+- Ability to exclude certain articles from the conversion process.
+- Real-time progress updates during the scraping operation.
+- Results can be copied to the clipboard for easy use.
+
+Classes:
+- `GUI`: The main class that initializes and manages the user interface components, including dropdowns for brands
+and categories, input fields for exclusions, and buttons for conversion and copying results.
+- `ProgressWindow`: A dialog that displays the progress of the scraping operation, including a progress bar and
+completion messages.
+- `ScrapeThread`: A thread that handles the execution of scraping tasks, allowing the GUI to remain responsive during
+long-running operations.
+- `Scrape`: A class responsible for managing the web scraping operations, including setting up the web driver,
+logging in to the target website, and retrieving product data.
+
+Functions:
+- `resource_path(relative_path)`: Utility function that returns the absolute path of a resource file, accommodating
+both frozen executables and normal environments.
+- `setup_db()`: Initializes the SQLite database and creates the necessary schema for storing Gambio IDs.
+
+Usage:
+To run the application, execute the script. Ensure that the required dependencies (PyQt6, Selenium, and SQLite) are
+installed and that the appropriate web driver is available in the specified path.
+"""
+
 import os
 import sqlite3
 import sys
-import time
-from datetime import datetime
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
@@ -26,7 +58,8 @@ def resource_path(relative_path):
     """
     Resource path utility function.
 
-    This function returns the absolute path of a resource file based on whether the application is running as a frozen executable or in a normal environment.
+    This function returns the absolute path of a resource file based on whether the application is running as a
+    frozen executable or in a normal environment.
 
     Args:
         relative_path (str): The relative path of the resource file.
@@ -66,7 +99,8 @@ class GUI(QWidget):
     """
     GUI class for the Gambio ID Converter application.
 
-    This class initializes the user interface for the application, allowing users to select brands and categories, exclude articles, and convert article numbers to Gambio IDs.
+    This class initializes the user interface for the application, allowing users to select brands and categories,
+    exclude articles, and convert article numbers to Gambio IDs.
 
     Args:
         scrape: An instance of the Scrape class used for web scraping operations.
@@ -83,36 +117,36 @@ class GUI(QWidget):
         self.scraper = scrape
 
         self.category_data = {
-            "Kamerasysteme + Objektive"         : {
-                "Nikon"                         : {
-                    "Nikon Z"                   : {"initials": "NIVOA"},
-                    "Nikkor Z-Mount Objektive"  : {"initials": "NIJMA"},
-                    "Nikon DSLR"                : {"initials": "NIVBA"},
-                    "Nikkor F-Mount Objektive"  : {"initials": "NIJAA"},
-                    "Nikon Blitzgeräte"         : {"initials": "NIFSA"},
-                    "Nikon Coolpix"             : {"initials": "NIVQA"}
+            "Kamerasysteme + Objektive": {
+                "Nikon"    : {
+                    "Nikon Z"                 : {"initials": "NIVOA"},
+                    "Nikkor Z-Mount Objektive": {"initials": "NIJMA"},
+                    "Nikon DSLR"              : {"initials": "NIVBA"},
+                    "Nikkor F-Mount Objektive": {"initials": "NIJAA"},
+                    "Nikon Blitzgeräte"       : {"initials": "NIFSA"},
+                    "Nikon Coolpix"           : {"initials": "NIVQA"}
                 },
-                "Sony"                          : {
-                    "Sony E-Mount Kameras"      : {"initials": "SOILCE"},
-                    "Sony E-Mount Objektive"    : {"initials": "SOSEL"},
-                    "Sony Kompaktkameras"       : {"initials": "SOZV & SODSC"}
+                "Sony"     : {
+                    "Sony E-Mount Kameras"  : {"initials": "SOILCE"},
+                    "Sony E-Mount Objektive": {"initials": "SOSEL"},
+                    "Sony Kompaktkameras"   : {"initials": "SOZV & SODSC"}
                 },
-                "Fujifilm"                      : {
-                    "Fujifilm GFX Kameras"      : {"initials": "FJ"},
-                    "Fujifilm GFX Objektive"    : {"initials": "FJ"},
-                    "Fujifilm X Kameras"        : {"initials": "FJ"}
+                "Fujifilm" : {
+                    "Fujifilm GFX Kameras"  : {"initials": "FJ"},
+                    "Fujifilm GFX Objektive": {"initials": "FJ"},
+                    "Fujifilm X Kameras"    : {"initials": "FJ"}
                 },
-                "Phase One"                     : {
+                "Phase One": {
                     "Phase One IQ Backs"        : {"initials": "PO"},
                     "Phase One XF Camera System": {"initials": "PO"}
                 },
-                "Cambo"                         : {
-                    "Cambo Wide RS"             : {"initials": "CA"},
-                    "Cambo ACTUS"               : {"initials": "CA"}
+                "Cambo"    : {
+                    "Cambo Wide RS": {"initials": "CA"},
+                    "Cambo ACTUS"  : {"initials": "CA"}
                 },
-                "Leica"                         : {
-                    "Leica M & Objektive"       : {"initials": "n/a"},
-                    "Leica Q"                   : {"initials": "n/a"}
+                "Leica"    : {
+                    "Leica M & Objektive": {"initials": "n/a"},
+                    "Leica Q"            : {"initials": "n/a"}
                 }
             }
         }
@@ -216,7 +250,8 @@ class GUI(QWidget):
         """
         Update the category dropdown based on the selected brand.
 
-        This method clears the current categories and populates the dropdown with subcategories corresponding to the selected brand.
+        This method clears the current categories and populates the dropdown with subcategories corresponding to the
+        selected brand.
 
         Returns:
             None
@@ -230,7 +265,8 @@ class GUI(QWidget):
         """
         Convert selected articles to Gambio IDs.
 
-        This method retrieves the selected brand and category, processes excluded articles, and queries the database for matching Gambio IDs.
+        This method retrieves the selected brand and category, processes excluded articles, and queries the database
+        for matching Gambio IDs.
 
         Returns:
             None
@@ -315,7 +351,8 @@ class ProgressWindow(QDialog):
     """
     Progress window for displaying scraping progress.
 
-    This class creates a dialog that shows the progress of the scraping operation, including a progress bar and completion messages.
+    This class creates a dialog that shows the progress of the scraping operation, including a progress bar and
+    completion messages.
 
     Args:
         loading_icon_path (str): The path to the loading icon to be displayed in the window.
@@ -404,7 +441,8 @@ class ScrapeThread(QThread):
     """
     Thread for performing scraping operations.
 
-    This class handles the execution of scraping tasks in a separate thread, allowing the GUI to remain responsive during long-running operations.
+    This class handles the execution of scraping tasks in a separate thread, allowing the GUI to remain responsive
+    during long-running operations.
 
     Args:
         scraper: An instance of the Scrape class used for web scraping operations.
@@ -421,7 +459,8 @@ class ScrapeThread(QThread):
         """
         Execute the scraping operations.
 
-        This method runs the scraping process, including setting up the driver, logging in, and navigating to the target page.
+        This method runs the scraping process, including setting up the driver, logging in, and navigating to the
+        target page.
 
         Returns:
             None
@@ -444,6 +483,7 @@ class Scrape:
     Args:
         None
     """
+
     def setup_driver(self):
         """
         Set up the web driver for scraping.
