@@ -2,11 +2,12 @@
 Scrape Gambio to generate a list of art-nr / gambio id pairs.
 """
 import os
+import sqlite3
 import sys
 import time
-import sqlite3
+from datetime import datetime
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -17,10 +18,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLabel,
     QDialog,
-    QGridLayout,
     QProgressBar, QMessageBox, QTextEdit, QHBoxLayout
 )
-
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -214,7 +213,8 @@ class GUI(QWidget):
     def update_subcategories(self, marken_combobox, categories_combobox):
         """
         :param marken_combobox: The combobox containing the list of available brands (QComboBox)
-        :param categories_combobox: The combobox where subcategories will be updated based on the selected brand (QComboBox)
+        :param categories_combobox: The combobox where subcategories will be updated based on the selected brand (
+        QComboBox)
         :return: No return value
         """
         selected_marke = marken_combobox.currentText()
@@ -277,7 +277,25 @@ class GUI(QWidget):
         self.progress_window.show()
 
         # Start the scraping process and pass the progress window to Scrape
-        self.scraper.main()
+        # UPDATE: now using a separate thread to prevent progress bar from freezing
+        self.scrape_thread = ScrapeThread(self.scraper)
+        self.scrape_thread.progress_updated.connect(self.progress_window.progress_bar.setValue)
+        self.scrape_thread.scraping_completed.connect(self.progress_window.show_completion_message)
+        self.scrape_thread.error_occurred.connect(self.show_error_message)
+        self.scrape_thread.start()
+
+    def show_error_message(self, error_message):
+        """
+        Display an error message box with the given error message.
+
+        :param error_message: The error message to display (str)
+        """
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Critical)
+        msg_box.setWindowTitle("Fehler")
+        msg_box.setText(error_message)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Close)
+        msg_box.exec()
 
 
 class ProgressWindow(QDialog):
@@ -339,29 +357,62 @@ class ProgressWindow(QDialog):
         completion_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.layout.addWidget(completion_label)
         self.adjustSize()  # Adjust window size to fit the new label
+        time.sleep(2)
+        self.close()
+
+
+class ScrapeThread(QThread):
+    progress_updated = pyqtSignal(int)
+    scraping_completed = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, scraper):
+        super().__init__()
+        self.scraper = scraper
+
+    def run(self):
+        # Simulate initial setup (progress)
+        # self.scraper.simulate_initial_setup(self.progress_updated)
+
+        # Set up Selenium driver
+        try:
+            self.scraper.setup_driver()
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to set up driver: {str(e)}")
+            return
+
+        # Perform the login
+        try:
+            self.scraper.login(email, password)
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to log in: {str(e)}")
+            return
+
+        # Navigate and scrape Gambio
+        try:
+            self.scraper.navigate_gambio(self.progress_updated)
+        except Exception as e:
+            self.error_occurred.emit(f"Failed during scraping: {str(e)}")
+            return
+
+        # Emit completion signal when scraping is done
+        self.scraping_completed.emit()
 
 
 class Scrape:
-    def __init__(self, progress_window):
-        self.progress_window = progress_window
-        self.setup_db()
+    def __init__(self):
+        pass
 
-    def main(self):
-        # Set up the driver and perform the login
-        self.setup_driver()
-        self.simulate_initial_setup()  # Simulate progress for initial setup
-        self.login(email, password)
-        self.navigate_gambio()  # Actual scraping process
-        self.progress_window.show_completion_message()  # Show the completion message once done
-
-    def simulate_initial_setup(self):
+    def simulate_initial_setup(self, progress_signal):
         # Simulate progress from 0% to 10% during setup (e.g., browser launch)
         for i in range(1, 11):
-            time.sleep(0.6)  # Simulated delay
-            self.progress_window.progress_bar.setValue(i)
-            QApplication.processEvents()  # Keep the GUI responsive
+            time.sleep(0.7)  # Reduced delay to keep UI responsive
+            progress_signal.emit(i)
 
     def setup_driver(self):
+        """
+
+        """
         # Set up Selenium WebDriver
         if getattr(sys, "frozen", False):
             base_path = sys._MEIPASS
@@ -374,48 +425,62 @@ class Scrape:
 
         service = Service(chromedriver_path)
 
+        # Initialize the WebDriver
         try:
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             self.driver.get("https://www.graphicart.ch/shop/de/")
+            print(f"[{datetime.now()}] Page loaded")
         except Exception as e:
-            print(f"An error occurred: {e}")
-            return
+            raise RuntimeError(
+                f"An error occurred while setting up the driver: {str(e)}"
+            ) from e
 
-    def wait(self, driver, condition, time=10):
-        return WebDriverWait(driver, time).until(condition)
+    def wait(self, condition, time=10):
+        return WebDriverWait(self.driver, time).until(condition)
 
     def login(self, email, password):
         # Log in to the website
-        kundenlogin_button = self.wait(self.driver, EC.presence_of_element_located(
-            (By.CSS_SELECTOR, 'a.dropdown-toggle[title="Anmeldung"]')))
+        print(f"[{datetime.now()}] Login method called")
+        kundenlogin_button = self.wait(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'a.dropdown-toggle[title="Anmeldung"]')))
         kundenlogin_button.click()
+        print(f"[{datetime.now()}] Login Button clicked")
 
-        email_field = self.wait(self.driver,
-                                EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-username')))
+        email_field = self.wait(EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-username')))
         email_field.send_keys(email)
+        print(f"[{datetime.now()}] email adress sent")
 
-        password_field = self.wait(self.driver,
-                                   EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-password')))
+        password_field = self.wait(EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-password')))
         password_field.send_keys(password)
+        print(f"[{datetime.now()}] Password sent")
 
-        login_button = self.wait(self.driver,
-                                 EC.presence_of_element_located((By.XPATH, '//input[@value="Anmelden"]')))
+        login_button = self.wait(EC.presence_of_element_located((By.XPATH, '//input[@value="Anmelden"]')))
         login_button.click()
+        print(f"[{datetime.now()}] Login button (Anmelden) clicked")
 
-    def navigate_gambio(self):
+    def navigate_gambio(self, progress_signal):
+
+        conn = sqlite3.connect("GambioIDs.db")
+        c = conn.cursor()
+
         # After login, navigate to the product page
         self.driver.get("https://www.graphicart.ch/shop/admin/validproducts.php")
 
         # Wait for the list to load
-        self.wait(self.driver, EC.visibility_of_element_located((By.CSS_SELECTOR, ".pageHeading")))
+        self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, ".pageHeading")))
 
         # Get list container
-        list_container = self.wait(self.driver, EC.visibility_of_element_located(
-            (By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)")))
+        list_container = self.wait(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)"))
+        )
 
         # Get rows, excluding first 2 (header rows)
         rows = list_container.find_elements(By.CSS_SELECTOR, "tr")[2:]
         total_rows = len(rows)
+
+        if total_rows == 0:
+            print("No rows found for scraping.")
+            return
 
         # Actual scraping, updating the progress bar from 10% to 100%
         for index, row in enumerate(rows):
@@ -425,16 +490,21 @@ class Scrape:
             art_nr = columns[2].text
 
             # Insert into database
-            self.c.execute("""
+            c.execute("""
                 INSERT OR IGNORE INTO gambioIDs (gambioID, bezeichnung, artNr)
                 VALUES (?, ?, ?)
             """, (gambio_id, art_name, art_nr))
-            self.conn.commit()
+            conn.commit()
 
             # Update progress bar
-            progress_percentage = 10 + int((index + 1) / total_rows * 90)
-            self.progress_window.progress_bar.setValue(progress_percentage)
-            QApplication.processEvents()  # Keep the GUI responsive
+            progress_percentage = int((index + 1) / total_rows * 100)
+            progress_signal.emit(progress_percentage)
+
+            # Debugging information for tracking progress updates
+            # print(f"Progress: {progress_percentage}% - Item {index + 1}/{total_rows}")
+
+        # Close the Selenium driver after completing the scraping
+        self.driver.quit()
 
     def setup_db(self):
         # Set up the SQLite database
@@ -455,7 +525,7 @@ class Scrape:
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    progress_window = ProgressWindow()
-    scrape = Scrape(progress_window)
-    ex = GUI(scrape)
+    scrape = Scrape()  # Initialize the Scrape class
+    scrape.setup_db()  # Call setup_db on Scrape first to create the table if not present
+    ex = GUI(scrape)  # Pass the scraper instance to the GUI
     sys.exit(app.exec())

@@ -163,3 +163,4 @@ cython_debug/
 /chromedriver.exe
 /chrome/
 /GambioIDs.db
+/output/
