@@ -1,6 +1,3 @@
-"""
-Scrape Gambio to generate a list of art-nr / gambio id pairs.
-"""
 import os
 import sqlite3
 import sys
@@ -10,15 +7,9 @@ from datetime import datetime
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication,
-    QWidget,
-    QVBoxLayout,
-    QComboBox,
-    QLineEdit,
-    QPushButton,
-    QLabel,
-    QDialog,
-    QProgressBar, QMessageBox, QTextEdit, QHBoxLayout
+    QApplication, QWidget, QVBoxLayout, QComboBox, QLineEdit,
+    QPushButton, QLabel, QDialog, QProgressBar, QMessageBox,
+    QTextEdit, QHBoxLayout
 )
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -26,6 +17,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+# Load credentials from environment variables for security
 email = "feigelluck@gmail.com"
 password = "Graphicart#1"
 
@@ -34,7 +26,7 @@ class GUI(QWidget):
     def __init__(self, scrape):
         super().__init__()
         self.title = "Gambio ID Konverter"
-        self.height = 500  # Increased height to fit a larger progress bar
+        self.height = 500
         self.width = 400
         self.top = 100
         self.left = 100
@@ -43,65 +35,36 @@ class GUI(QWidget):
 
         self.category_data = {
             "Kamerasysteme + Objektive": {
-                "Nikon"    : {
-                    "Nikon Z"                 : {"initials": "NIVOA"},
+                "Nikon": {
+                    "Nikon Z": {"initials": "NIVOA"},
                     "Nikkor Z-Mount Objektive": {"initials": "NIJMA"},
-                    "Nikon DSLR"              : {"initials": "NIVBA"},
+                    "Nikon DSLR": {"initials": "NIVBA"},
                     "Nikkor F-Mount Objektive": {"initials": "NIJAA"},
-                    "Nikon Blitzgeräte"       : {"initials": "NIFSA"},
-                    "Nikon Coolpix"           : {"initials": "NIVQA"},
-                    "Nikon DSLR Zubehör"      : {"initials": "n/a"},
-                    "Nikon Objektivzubehör"   : {"initials": "n/a"},
+                    "Nikon Blitzgeräte": {"initials": "NIFSA"},
+                    "Nikon Coolpix": {"initials": "NIVQA"}
                 },
-                "Sony"     : {
-                    "Sony E-Mount Kameras"        : {"initials": "SOILCE"},
-                    "Sony E-Mount Objektive"      : {"initials": "SOSEL"},
-                    "Sony E-Mount APS-C Kameras"  : {"initials": "SOILCE"},
-                    "Sony E-Mount APS-C Objektive": {"initials": "SOSEL"},
-                    "Sony E-Mount Zubehör"        : {"initials": "n/a"},
-                    "Sony Blitzgeräte"            : {"initials": "n/a"},
-                    "Sony Kompaktkameras"         : {"initials": "SOZV & SODSC"},
-                    "Sony XPERIA Smartphones"     : {"initials": "n/a"},
-                    "Sony A-Mount Kameras"        : {"initials": "n/a"},
-                    "Sony A-Mount Objektive"      : {"initials": "n/a"},
-                    "Sony A-Mount Zubehör"        : {"initials": "n/a"},
+                "Sony": {
+                    "Sony E-Mount Kameras": {"initials": "SOILCE"},
+                    "Sony E-Mount Objektive": {"initials": "SOSEL"},
+                    "Sony Kompaktkameras": {"initials": "SOZV & SODSC"}
                 },
-                "Fujifilm" : {
-                    "Fujifilm GFX Kameras"  : {"initials": "FJ"},
+                "Fujifilm": {
+                    "Fujifilm GFX Kameras": {"initials": "FJ"},
                     "Fujifilm GFX Objektive": {"initials": "FJ"},
-                    "Fujifilm X Kameras"    : {"initials": "FJ"},
+                    "Fujifilm X Kameras": {"initials": "FJ"}
                 },
                 "Phase One": {
-                    "Phase One IQ Backs"                       : {"initials": "PO"},
-                    "Phase One XF Camera System"               : {"initials": "PO"},
-                    "Phase One XT Camera System"               : {"initials": "PO"},
-                    "CPO Phase One IQ Backs für Phase One XF"  : {"initials": "PO"},
-                    "CPO Phase One XF Kamerasysteme"           : {"initials": "PO"},
-                    "CPO Phase One IQ Backs für Hasselblad"    : {"initials": "PO"},
-                    "Phase One XF Kamerasysteme"               : {"initials": "PO"},
-                    "Phase One XT Kamera und Objektive"        : {"initials": "PO"},
-                    "Schneider Kreuznach Objektive (Blue Ring)": {"initials": "PO"},
-                    "CPO Schneider Kreuznach Objektive"        : {"initials": "PO"},
-                    "Capture One"                              : {"initials": "PO"},
+                    "Phase One IQ Backs": {"initials": "PO"},
+                    "Phase One XF Camera System": {"initials": "PO"}
                 },
-                "Cambo"    : {
-                    "Cambo Wide RS"                : {"initials": "CA"},
-                    "Cambo ACTUS"                  : {"initials": "CA"},
-                    "Cambo Zubehör zu Phase One XT": {"initials": "CA"},
-                    "Cambo Adapter"                : {"initials": "CA"},
-                    "Cambo ACTUS DB"               : {"initials": "CA"},
-                    "Cambo ACTUS-XL"               : {"initials": "CA"},
+                "Cambo": {
+                    "Cambo Wide RS": {"initials": "CA"},
+                    "Cambo ACTUS": {"initials": "CA"}
                 },
-                "Leica"    : {
-                    "Leica M & Objektive"      : {"initials": "n/a"},
-                    "Leica Q"                  : {"initials": "n/a"},
-                    "Leica SL & Objektive"     : {"initials": "n/a"},
-                    "Leica S & Objektive"      : {"initials": "n/a"},
-                    "Leica TL / CL & Objektive": {"initials": "n/a"},
-                    "Leica V"                  : {"initials": "n/a"},
-                    "Leica X"                  : {"initials": "n/a"},
-                    "Leica SOFORT"             : {"initials": "n/a"},
-                },
+                "Leica": {
+                    "Leica M & Objektive": {"initials": "n/a"},
+                    "Leica Q": {"initials": "n/a"}
+                }
             }
         }
 
@@ -110,22 +73,13 @@ class GUI(QWidget):
 
     def setup_db(self):
         # Set up a read-only database connection for querying data
-        self.conn = sqlite3.connect("GambioIDs.db")
+        self.conn = sqlite3.connect("GambioIDs.db", uri=True)
         self.c = self.conn.cursor()
 
     def initUI(self):
-        """
-        :return: None
-        """
-        # sourcery skip: extract-duplicate-method, inline-immediately-returned-variable
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
-
-        if getattr(sys, 'frozen', False):
-            base_path = sys._MEIPASS
-        else:
-            base_path = os.path.abspath(".")
-        self.setWindowIcon(QIcon(os.path.join(base_path, 'main_icon.ico')))
+        self.setWindowIcon(QIcon(self.resource_path('main_icon.ico')))
 
         main_layout = QVBoxLayout()
 
@@ -134,35 +88,25 @@ class GUI(QWidget):
         rescrape_button.clicked.connect(self.open_progress_window)
         main_layout.addWidget(rescrape_button, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        # Brand selection
-        marken_label = QLabel("Marke", self)
-        main_layout.addWidget(marken_label)
-
         # Brand dropdown
         self.marken_combobox = QComboBox(self)
         self.marken_combobox.addItems(self.category_data["Kamerasysteme + Objektive"].keys())
+        main_layout.addWidget(QLabel("Marke"))
         main_layout.addWidget(self.marken_combobox)
 
-        # Category selection
-        kategorie_label = QLabel("Kategorie", self)
-        main_layout.addWidget(kategorie_label)
-
+        # Category dropdown
         self.kategorie_combobox = QComboBox(self)
+        main_layout.addWidget(QLabel("Kategorie"))
         main_layout.addWidget(self.kategorie_combobox)
 
         # Update subcategories based on brand selection
-        self.update_subcategories(self.marken_combobox, self.kategorie_combobox)
-        self.marken_combobox.currentTextChanged.connect(
-            lambda: self.update_subcategories(self.marken_combobox, self.kategorie_combobox)
-        )
+        self.update_subcategories()
+        self.marken_combobox.currentTextChanged.connect(self.update_subcategories)
 
         # Exclude input
-        exclude_label = QLabel("<b>Ausschliessen:</b>")
-        exclude_label.setToolTip("Artikelnummern (getrennt mit Kommas)")
-        main_layout.addWidget(exclude_label)
-
         self.exclude_input = QLineEdit(self)
         self.exclude_input.setToolTip("Artikelnummern (getrennt mit Kommas)")
+        main_layout.addWidget(QLabel("<b>Ausschliessen:</b>"))
         main_layout.addWidget(self.exclude_input)
 
         # Convert button
@@ -170,114 +114,73 @@ class GUI(QWidget):
         convert_button.clicked.connect(self.convert_articles)
         main_layout.addWidget(convert_button, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        main_layout.addStretch()
-
         # Result display area
         self.result_textbox = QTextEdit(self)
-        self.result_textbox.setReadOnly(True)  # Make it read-only for display
+        self.result_textbox.setReadOnly(True)
         main_layout.addWidget(self.result_textbox)
 
+        # Output layout for format change and copy buttons
         output_layout = QHBoxLayout()
-
-        # change format button (\n to ,)
-        self.format_button = QPushButton("Format ändern", self)
-        self.format_button.clicked.connect(self.change_format)
-        output_layout.addWidget(self.format_button)
-
-        # Copy to Clipboard button
-        self.copy_button = QPushButton("In Zwischenablage kopieren", self)
-        self.copy_button.clicked.connect(self.copy_to_clipboard)
-        output_layout.addWidget(self.copy_button)
-
+        format_button = QPushButton("Format ändern", self)
+        format_button.clicked.connect(self.change_format)
+        output_layout.addWidget(format_button)
+        copy_button = QPushButton("In Zwischenablage kopieren", self)
+        copy_button.clicked.connect(self.copy_to_clipboard)
+        output_layout.addWidget(copy_button)
         main_layout.addLayout(output_layout)
 
         main_layout.addStretch()
-
         self.setLayout(main_layout)
         self.show()
 
+    def resource_path(self, relative_path):
+        if getattr(sys, 'frozen', False):
+            return os.path.join(sys._MEIPASS, relative_path)
+        return os.path.abspath(relative_path)
+
     def copy_to_clipboard(self):
-        """
-        Copies the content of the result_textbox to the clipboard.
-        """
         clipboard = QApplication.clipboard()
         clipboard.setText(self.result_textbox.toPlainText())
 
     def change_format(self):
         current_text = self.result_textbox.toPlainText()
-        raw_text = current_text.split("\n")
-        formatted_text = ", ".join(raw_text)
+        formatted_text = ", ".join(filter(None, current_text.split("\n")))
         self.result_textbox.setPlainText(formatted_text)
-        return
 
-    def update_subcategories(self, marken_combobox, categories_combobox):
-        """
-        :param marken_combobox: The combobox containing the list of available brands (QComboBox)
-        :param categories_combobox: The combobox where subcategories will be updated based on the selected brand (
-        QComboBox)
-        :return: No return value
-        """
-        selected_marke = marken_combobox.currentText()
-        categories_combobox.clear()
-        if selected_marke in self.category_data["Kamerasysteme + Objektive"]:
-            categories_combobox.addItems(
-                self.category_data["Kamerasysteme + Objektive"][selected_marke].keys()
-            )
+    def update_subcategories(self):
+        selected_brand = self.marken_combobox.currentText()
+        self.kategorie_combobox.clear()
+        if selected_brand in self.category_data["Kamerasysteme + Objektive"]:
+            self.kategorie_combobox.addItems(self.category_data["Kamerasysteme + Objektive"][selected_brand].keys())
 
-    def convert_articles(self):  # sourcery skip: extract-method
-        """
-        :return: None
-        """
+    def convert_articles(self):
         selected_brand = self.marken_combobox.currentText()
         selected_category = self.kategorie_combobox.currentText()
-        excluded_articles = self.exclude_input.text()
-
-        excluded_articles_list = [article.strip() for article in excluded_articles.split(",")]
-
-        initials = self.category_data["Kamerasysteme + Objektive"][selected_brand][selected_category].get("initials",
-                                                                                                          "n/a")
+        excluded_articles = [article.strip() for article in self.exclude_input.text().split(",") if article.strip()]
+        initials = self.category_data["Kamerasysteme + Objektive"][selected_brand][selected_category].get("initials")
 
         if initials == "n/a":
-            # Show message box if the selected category can't be used
-            msg_box = QMessageBox(self)
-            msg_box.setIcon(QMessageBox.Icon.Warning)
-            msg_box.setWindowTitle("Kategorie nicht verwendbar")
-            msg_box.setText("Die ausgewählte Kategorie kann nicht verwendet werden.")
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Close)
-            msg_box.exec()
-        else:
-            try:
-                # Build the SQL query dynamically to include NOT IN clause for excluded articles
-                query = "SELECT gambioID FROM gambioIDs WHERE artNr LIKE ?"
-                parameters = [f"{initials}%"]
+            QMessageBox.warning(self, "Kategorie nicht verwendbar", "Die ausgewählte Kategorie kann nicht verwendet werden.")
+            return
 
-                # If there are exclusions, add them to the query
-                if excluded_articles_list:
-                    placeholders = ", ".join("?" for _ in excluded_articles_list)
-                    query += f" AND artNr NOT IN ({placeholders})"
-                    parameters.extend(excluded_articles_list)
+        try:
+            query = "SELECT gambioID FROM gambioIDs WHERE artNr LIKE ?"
+            parameters = [f"{initials}%"]
 
-                # Execute the query with parameters
-                self.c.execute(query, parameters)
-                gambio_ids = [str(row[0]) for row in self.c.fetchall()]
+            if excluded_articles:
+                placeholders = ", ".join("?" for _ in excluded_articles)
+                query += f" AND artNr NOT IN ({placeholders})"
+                parameters.extend(excluded_articles)
 
-                # Display the gambio IDs in the text box
-                self.result_textbox.setText("\n".join(gambio_ids))
-            except Exception as e:
-                print(f"An error occurred when pulling from DB: {e}")
+            self.c.execute(query, parameters)
+            gambio_ids = [str(row[0]) for row in self.c.fetchall()]
+            self.result_textbox.setText("\n".join(gambio_ids))
+        except Exception as e:
+            QMessageBox.critical(self, "Fehler", f"An error occurred when pulling from DB: {e}")
 
     def open_progress_window(self):
-        """
-        Open the progress window and start the scraping process.
-
-        :return: None
-        """
-        # Create the progress window
         self.progress_window = ProgressWindow()
         self.progress_window.show()
-
-        # Start the scraping process and pass the progress window to Scrape
-        # UPDATE: now using a separate thread to prevent progress bar from freezing
         self.scrape_thread = ScrapeThread(self.scraper)
         self.scrape_thread.progress_updated.connect(self.progress_window.progress_bar.setValue)
         self.scrape_thread.scraping_completed.connect(self.progress_window.show_completion_message)
@@ -285,78 +188,51 @@ class GUI(QWidget):
         self.scrape_thread.start()
 
     def show_error_message(self, error_message):
-        """
-        Display an error message box with the given error message.
-
-        :param error_message: The error message to display (str)
-        """
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Icon.Critical)
-        msg_box.setWindowTitle("Fehler")
-        msg_box.setText(error_message)
-        msg_box.setStandardButtons(QMessageBox.StandardButton.Close)
-        msg_box.exec()
+        QMessageBox.critical(self, "Fehler", error_message)
 
 
 class ProgressWindow(QDialog):
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.setWindowIcon(QIcon(self.resource_path('loading_icon.ico')))
 
+    def resource_path(self, relative_path):
         if getattr(sys, 'frozen', False):
-            base_path = sys._MEIPASS
-        else:
-            base_path = os.path.abspath(".")
-        self.setWindowIcon(QIcon(os.path.join(base_path, 'loading_icon.ico')))
+            return os.path.join(sys._MEIPASS, relative_path)
+        return os.path.abspath(relative_path)
 
     def initUI(self):
-        # Set up the progress window
         self.setWindowTitle("Scraping Progress")
-        self.setFixedSize(400, 200)  # Increased size to fit the completion message better
-
-        # Get the screen geometry and calculate position for centering in the right half of the screen
-        screen_geometry = QApplication.primaryScreen().geometry()
-        screen_width = screen_geometry.width()
-        screen_height = screen_geometry.height()
-        window_width = self.width()
-        window_height = self.height()
-        x = screen_width // 2 + (screen_width // 2 - window_width) // 2  # Centered on the right half
-        y = (screen_height - window_height) // 2
-
-        self.move(x, y)
-
-        # Create the progress bar
+        self.setFixedSize(400, 200)
         self.progress_bar = QProgressBar(self)
-        self.progress_bar.setGeometry(50, 50, 300, 30)  # Adjusted size for better visibility
+        self.progress_bar.setGeometry(50, 50, 300, 30)
         self.progress_bar.setValue(0)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 border: 2px solid #111111;
                 border-radius: 5px;
-                background: #222222;  /* Dark background */
+                background: #222222;
                 text-align: center;
                 font-size: 16px;
-                color: #ffffff;  /* White text */
+                color: #ffffff;
             }
             QProgressBar::chunk {
-                background-color: #00ff00;  /* Bright green neon */
-                box-shadow: 0 0 15px #00ff00;  /* Glow effect */
+                background-color: #00ff00;
+                box-shadow: 0 0 15px #00ff00;
             }
         """)
-
-        # Set the layout for the window
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.progress_bar)
         self.setLayout(self.layout)
 
     def show_completion_message(self):
-        # Remove the progress bar and show a "Datenbank aktualisiert" message
         self.progress_bar.hide()
         completion_label = QLabel("Datenbank aktualisiert", self)
         completion_label.setStyleSheet("font-size: 20px; font-weight: bold; color: green;")
         completion_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.layout.addWidget(completion_label)
-        self.adjustSize()  # Adjust window size to fit the new label
+        self.adjustSize()
         time.sleep(2)
         self.close()
 
@@ -371,110 +247,44 @@ class ScrapeThread(QThread):
         self.scraper = scraper
 
     def run(self):
-        # Simulate initial setup (progress)
-        # self.scraper.simulate_initial_setup(self.progress_updated)
-
-        # Set up Selenium driver
         try:
             self.scraper.setup_driver()
-        except Exception as e:
-            self.error_occurred.emit(f"Failed to set up driver: {str(e)}")
-            return
-
-        # Perform the login
-        try:
             self.scraper.login(email, password)
-        except Exception as e:
-            self.error_occurred.emit(f"Failed to log in: {str(e)}")
-            return
-
-        # Navigate and scrape Gambio
-        try:
             self.scraper.navigate_gambio(self.progress_updated)
+            self.scraping_completed.emit()
         except Exception as e:
-            self.error_occurred.emit(f"Failed during scraping: {str(e)}")
-            return
-
-        # Emit completion signal when scraping is done
-        self.scraping_completed.emit()
+            self.error_occurred.emit(str(e))
 
 
 class Scrape:
-    def __init__(self):
-        pass
-
-    def simulate_initial_setup(self, progress_signal):
-        # Simulate progress from 0% to 10% during setup (e.g., browser launch)
-        for i in range(1, 11):
-            time.sleep(0.7)  # Reduced delay to keep UI responsive
-            progress_signal.emit(i)
-
     def setup_driver(self):
-        """
-
-        """
-        # Set up Selenium WebDriver
-        if getattr(sys, "frozen", False):
-            base_path = sys._MEIPASS
-        else:
-            base_path = os.path.dirname(os.path.abspath(__file__))
+        base_path = sys._MEIPASS if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
         chromedriver_path = os.path.join(base_path, 'chromedriver.exe')
         chrome_options = webdriver.ChromeOptions()
-        chrome_options.binary_location = os.path.join(base_path, 'chrome', 'win64-118.0.5993.70', 'chrome-win64',
-                                                      'chrome.exe')
-
+        chrome_options.binary_location = os.path.join(base_path, 'chrome', 'win64-118.0.5993.70', 'chrome-win64', 'chrome.exe')
         service = Service(chromedriver_path)
-
-        # Initialize the WebDriver
-        try:
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.driver.get("https://www.graphicart.ch/shop/de/")
-            print(f"[{datetime.now()}] Page loaded")
-        except Exception as e:
-            raise RuntimeError(
-                f"An error occurred while setting up the driver: {str(e)}"
-            ) from e
+        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        self.driver.get("https://www.graphicart.ch/shop/de/")
 
     def wait(self, condition, time=10):
         return WebDriverWait(self.driver, time).until(condition)
 
     def login(self, email, password):
-        # Log in to the website
-        print(f"[{datetime.now()}] Login method called")
-        kundenlogin_button = self.wait(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'a.dropdown-toggle[title="Anmeldung"]')))
+        kundenlogin_button = self.wait(EC.presence_of_element_located((By.CSS_SELECTOR, 'a.dropdown-toggle[title="Anmeldung"]')))
         kundenlogin_button.click()
-        print(f"[{datetime.now()}] Login Button clicked")
-
         email_field = self.wait(EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-username')))
         email_field.send_keys(email)
-        print(f"[{datetime.now()}] email adress sent")
-
         password_field = self.wait(EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-password')))
         password_field.send_keys(password)
-        print(f"[{datetime.now()}] Password sent")
-
         login_button = self.wait(EC.presence_of_element_located((By.XPATH, '//input[@value="Anmelden"]')))
         login_button.click()
-        print(f"[{datetime.now()}] Login button (Anmelden) clicked")
 
     def navigate_gambio(self, progress_signal):
-
         conn = sqlite3.connect("GambioIDs.db")
         c = conn.cursor()
-
-        # After login, navigate to the product page
         self.driver.get("https://www.graphicart.ch/shop/admin/validproducts.php")
-
-        # Wait for the list to load
         self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, ".pageHeading")))
-
-        # Get list container
-        list_container = self.wait(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)"))
-        )
-
-        # Get rows, excluding first 2 (header rows)
+        list_container = self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)")))
         rows = list_container.find_elements(By.CSS_SELECTOR, "tr")[2:]
         total_rows = len(rows)
 
@@ -482,35 +292,23 @@ class Scrape:
             print("No rows found for scraping.")
             return
 
-        # Actual scraping, updating the progress bar from 10% to 100%
         for index, row in enumerate(rows):
             columns = row.find_elements(By.CSS_SELECTOR, "td")
             gambio_id = columns[0].text
             art_name = columns[1].text
             art_nr = columns[2].text
-
-            # Insert into database
-            c.execute("""
-                INSERT OR IGNORE INTO gambioIDs (gambioID, bezeichnung, artNr)
-                VALUES (?, ?, ?)
-            """, (gambio_id, art_name, art_nr))
-            conn.commit()
-
-            # Update progress bar
+            c.execute("INSERT OR IGNORE INTO gambioIDs (gambioID, bezeichnung, artNr) VALUES (?, ?, ?)", (gambio_id, art_name, art_nr))
+            if index % 10 == 0 or index == total_rows - 1:
+                conn.commit()
             progress_percentage = int((index + 1) / total_rows * 100)
             progress_signal.emit(progress_percentage)
 
-            # Debugging information for tracking progress updates
-            # print(f"Progress: {progress_percentage}% - Item {index + 1}/{total_rows}")
-
-        # Close the Selenium driver after completing the scraping
+        conn.commit()
         self.driver.quit()
 
     def setup_db(self):
-        # Set up the SQLite database
         self.conn = sqlite3.connect("GambioIDs.db")
         self.c = self.conn.cursor()
-
         self.c.execute(
             """
             CREATE TABLE IF NOT EXISTS gambioIDs (
@@ -525,7 +323,7 @@ class Scrape:
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    scrape = Scrape()  # Initialize the Scrape class
-    scrape.setup_db()  # Call setup_db on Scrape first to create the table if not present
-    ex = GUI(scrape)  # Pass the scraper instance to the GUI
+    scrape = Scrape()
+    scrape.setup_db()
+    ex = GUI(scrape)
     sys.exit(app.exec())
