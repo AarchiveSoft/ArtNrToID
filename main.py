@@ -41,8 +41,9 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QComboBox, QLineEdit,
     QPushButton, QLabel, QDialog, QProgressBar, QMessageBox,
-    QTextEdit, QHBoxLayout
+    QTextEdit, QHBoxLayout, QGridLayout
 )
+from QSwitchControl import SwitchControl as Switch
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -117,36 +118,37 @@ class GUI(QWidget):
         self.scraper = scrape
 
         self.category_data = {
-            "Kamerasysteme + Objektive": {
-                "Nikon"    : {
-                    "Nikon Z"                 : {"initials": "NIVOA"},
-                    "Nikkor Z-Mount Objektive": {"initials": "NIJMA"},
-                    "Nikon DSLR"              : {"initials": "NIVBA"},
-                    "Nikkor F-Mount Objektive": {"initials": "NIJAA"},
-                    "Nikon Blitzgeräte"       : {"initials": "NIFSA"},
-                    "Nikon Coolpix"           : {"initials": "NIVQA"}
+            "Kamerasysteme + Objektive"         : {
+                "Nikon"                         : {
+                    "Nikon Z"                   : {"initials": "NIVOA"},
+                    "Nikkor Z-Mount Objektive"  : {"initials": "NIJMA"},
+                    "Nikon DSLR"                : {"initials": "NIVBA"},
+                    "Nikkor F-Mount Objektive"  : {"initials": "NIJAA"},
+                    "Nikon Blitzgeräte"         : {"initials": "NIFSA"},
+                    "Nikon Coolpix"             : {"initials": "NIVQA"}
                 },
-                "Sony"     : {
-                    "Sony E-Mount Kameras"  : {"initials": "SOILCE"},
-                    "Sony E-Mount Objektive": {"initials": "SOSEL"},
-                    "Sony Kompaktkameras"   : {"initials": "SOZV & SODSC"}
+                "Sony"                          : {
+                    "Sony E-Mount Kameras"      : {"initials": "SOILCE"},
+                    "Sony E-Mount Objektive"    : {"initials": "SOSEL"},
+                    "Sony Video Kameras"        : {"initials": "SOILME"},
+                    "Sony Kompaktkameras"       : {"initials": "SOZV & SODSC"}
                 },
-                "Fujifilm" : {
-                    "Fujifilm GFX Kameras"  : {"initials": "FJ"},
-                    "Fujifilm GFX Objektive": {"initials": "FJ"},
-                    "Fujifilm X Kameras"    : {"initials": "FJ"}
+                "Fujifilm"                      : {
+                    "Fujifilm GFX Kameras"      : {"initials": "FJ"},
+                    "Fujifilm GFX Objektive"    : {"initials": "FJ"},
+                    "Fujifilm X Kameras"        : {"initials": "FJ"}
                 },
-                "Phase One": {
+                "Phase One"                     : {
                     "Phase One IQ Backs"        : {"initials": "PO"},
                     "Phase One XF Camera System": {"initials": "PO"}
                 },
-                "Cambo"    : {
-                    "Cambo Wide RS": {"initials": "CA"},
-                    "Cambo ACTUS"  : {"initials": "CA"}
+                "Cambo"                         : {
+                    "Cambo Wide RS"             : {"initials": "CA"},
+                    "Cambo ACTUS"               : {"initials": "CA"}
                 },
-                "Leica"    : {
-                    "Leica M & Objektive": {"initials": "n/a"},
-                    "Leica Q"            : {"initials": "n/a"}
+                "Leica"                         : {
+                    "Leica M & Objektive"       : {"initials": "n/a"},
+                    "Leica Q"                   : {"initials": "n/a"}
                 }
             }
         }
@@ -175,6 +177,22 @@ class GUI(QWidget):
         rescrape_button = QPushButton("Datenbank aktualisieren")
         rescrape_button.clicked.connect(self.open_progress_window)
         main_layout.addWidget(rescrape_button, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        # input interface
+        input_layout = QGridLayout()
+
+        # Mode switch
+        # option 1
+        option1 = QLabel("Liste")
+        input_layout.addWidget(option1, 0, 0)
+        # option 2
+        option2 = QLabel("Kategorie mit Ausnahmen")
+        input_layout.addWidget(option2, 0, 2)
+        # switch
+        mode_switch = Switch()
+        input_layout.addWidget(mode_switch, 0, 1)
+
+        main_layout.addWidget(input_layout)
 
         # Brand dropdown
         self.marken_combobox = QComboBox(self)
