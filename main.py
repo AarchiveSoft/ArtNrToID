@@ -36,14 +36,13 @@ import os
 import sqlite3
 import sys
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QComboBox, QLineEdit,
-    QPushButton, QLabel, QDialog, QProgressBar, QMessageBox,
-    QTextEdit, QHBoxLayout, QGridLayout
+    QWidget, QComboBox, QLineEdit,
+    QDialog, QProgressBar, QMessageBox,
+    QTextEdit, QGridLayout, QApplication, QVBoxLayout, QPushButton, QCheckBox, QLabel
 )
-from QSwitchControl import SwitchControl as Switch
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -118,37 +117,37 @@ class GUI(QWidget):
         self.scraper = scrape
 
         self.category_data = {
-            "Kamerasysteme + Objektive"         : {
-                "Nikon"                         : {
-                    "Nikon Z"                   : {"initials": "NIVOA"},
-                    "Nikkor Z-Mount Objektive"  : {"initials": "NIJMA"},
-                    "Nikon DSLR"                : {"initials": "NIVBA"},
-                    "Nikkor F-Mount Objektive"  : {"initials": "NIJAA"},
-                    "Nikon Blitzgeräte"         : {"initials": "NIFSA"},
-                    "Nikon Coolpix"             : {"initials": "NIVQA"}
+            "Kamerasysteme + Objektive": {
+                "Nikon"    : {
+                    "Nikon Z"                 : {"initials": "NIVOA"},
+                    "Nikkor Z-Mount Objektive": {"initials": "NIJMA"},
+                    "Nikon DSLR"              : {"initials": "NIVBA"},
+                    "Nikkor F-Mount Objektive": {"initials": "NIJAA"},
+                    "Nikon Blitzgeräte"       : {"initials": "NIFSA"},
+                    "Nikon Coolpix"           : {"initials": "NIVQA"}
                 },
-                "Sony"                          : {
-                    "Sony E-Mount Kameras"      : {"initials": "SOILCE"},
-                    "Sony E-Mount Objektive"    : {"initials": "SOSEL"},
-                    "Sony Video Kameras"        : {"initials": "SOILME"},
-                    "Sony Kompaktkameras"       : {"initials": "SOZV & SODSC"}
+                "Sony"     : {
+                    "Sony E-Mount Kameras"  : {"initials": "SOILCE"},
+                    "Sony E-Mount Objektive": {"initials": "SOSEL"},
+                    "Sony Video Kameras"    : {"initials": "SOILME"},
+                    "Sony Kompaktkameras"   : {"initials": "SOZV & SODSC"}
                 },
-                "Fujifilm"                      : {
-                    "Fujifilm GFX Kameras"      : {"initials": "FJ"},
-                    "Fujifilm GFX Objektive"    : {"initials": "FJ"},
-                    "Fujifilm X Kameras"        : {"initials": "FJ"}
+                "Fujifilm" : {
+                    "Fujifilm GFX Kameras"  : {"initials": "FJ"},
+                    "Fujifilm GFX Objektive": {"initials": "FJ"},
+                    "Fujifilm X Kameras"    : {"initials": "FJ"}
                 },
-                "Phase One"                     : {
+                "Phase One": {
                     "Phase One IQ Backs"        : {"initials": "PO"},
                     "Phase One XF Camera System": {"initials": "PO"}
                 },
-                "Cambo"                         : {
-                    "Cambo Wide RS"             : {"initials": "CA"},
-                    "Cambo ACTUS"               : {"initials": "CA"}
+                "Cambo"    : {
+                    "Cambo Wide RS": {"initials": "CA"},
+                    "Cambo ACTUS"  : {"initials": "CA"}
                 },
-                "Leica"                         : {
-                    "Leica M & Objektive"       : {"initials": "n/a"},
-                    "Leica Q"                   : {"initials": "n/a"}
+                "Leica"    : {
+                    "Leica M & Objektive": {"initials": "n/a"},
+                    "Leica Q"            : {"initials": "n/a"}
                 }
             }
         }
@@ -182,18 +181,8 @@ class GUI(QWidget):
         input_layout = QGridLayout()
 
         # Mode switch
-        # option 1
-        option1 = QLabel("Liste")
-        input_layout.addWidget(option1, 0, 0)
-        # option 2
-        option2 = QLabel("Kategorie mit Ausnahmen")
-        input_layout.addWidget(option2, 0, 2)
-        # switch
-        mode_switch = Switch()
-        input_layout.addWidget(mode_switch, 0, 1)
-
-        main_layout.addWidget(input_layout)
-
+        toggle_layout = ModeSwitchGUI()
+        main_layout.addLayout(toggle_layout)
         # Brand dropdown
         self.marken_combobox = QComboBox(self)
         self.marken_combobox.addItems(self.category_data["Kamerasysteme + Objektive"].keys())
@@ -364,6 +353,56 @@ class GUI(QWidget):
         """
         QMessageBox.critical(self, "Fehler", error_message)
 
+
+class ModeSwitchGUI(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Mode Switch Example")
+        self.setGeometry(100, 100, 300, 200)
+
+        # Main layout
+        self.toggle_layout = QVBoxLayout()
+
+        # Options with checkboxes
+        self.option1 = QCheckBox("Liste")
+        self.option2 = QCheckBox("Kategorie mit Ausnahmen")
+
+        # Make checkboxes non-interactive (user can't click directly)
+        self.option1.setEnabled(False)
+        self.option2.setEnabled(False)
+
+        # Initially, select option 1
+        self.option1.setChecked(True)
+
+        # Add checkboxes to layout
+        self.toggle_layout.addWidget(self.option1)
+        self.toggle_layout.addWidget(self.option2)
+
+        # "Modus wechseln" button
+        self.switch_button = QPushButton("Modus wechseln")
+        self.switch_button.clicked.connect(self.switch_mode)
+        self.toggle_layout.addWidget(self.switch_button)
+
+        # Add a placeholder for GUI elements specific to the selected mode
+        self.mode_specific_label = QLabel("Mode: Liste")
+        self.mode_specific_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.toggle_layout.addWidget(self.mode_specific_label)
+
+        return self.toggle_layout
+
+
+    def switch_mode(self):
+        """Switch between the two modes."""
+        if self.option1.isChecked():
+            # Switch to option 2
+            self.option1.setChecked(False)
+            self.option2.setChecked(True)
+            self.mode_specific_label.setText("Mode: Kategorie mit Ausnahmen")
+        else:
+            # Switch to option 1
+            self.option1.setChecked(True)
+            self.option2.setChecked(False)
+            self.mode_specific_label.setText("Mode: Liste")
 
 class ProgressWindow(QDialog):
     """
@@ -600,8 +639,11 @@ class Scrape:
 
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    setup_db()
-    scrape = Scrape()
-    ex = GUI(scrape)
-    sys.exit(app.exec())
+    try:
+        app = QApplication(sys.argv)
+        setup_db()
+        scrape = Scrape()
+        ex = GUI(scrape)
+        sys.exit(app.exec())
+    except Exception as e:
+        print(f"Error occurred: {e}")
