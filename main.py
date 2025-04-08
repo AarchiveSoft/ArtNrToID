@@ -1,47 +1,14 @@
-"""
-Gambio ID Converter Application
-
-This application is a graphical user interface (GUI) tool built using PyQt6 that allows users to convert article
-numbers into Gambio IDs. It provides functionality for selecting product categories, excluding specific articles,
-and displaying the results of the conversion process. The application interacts with a SQLite database to store and
-retrieve Gambio IDs and utilizes Selenium for web scraping to gather product data from a specified website.
-
-Key Features:
-- User-friendly interface for selecting brands and categories.
-- Ability to exclude certain articles from the conversion process.
-- Real-time progress updates during the scraping operation.
-- Results can be copied to the clipboard for easy use.
-
-Classes:
-- `GUI`: The main class that initializes and manages the user interface components, including dropdowns for brands
-and categories, input fields for exclusions, and buttons for conversion and copying results.
-- `ProgressWindow`: A dialog that displays the progress of the scraping operation, including a progress bar and
-completion messages.
-- `ScrapeThread`: A thread that handles the execution of scraping tasks, allowing the GUI to remain responsive during
-long-running operations.
-- `Scrape`: A class responsible for managing the web scraping operations, including setting up the web driver,
-logging in to the target website, and retrieving product data.
-
-Functions:
-- `resource_path(relative_path)`: Utility function that returns the absolute path of a resource file, accommodating
-both frozen executables and normal environments.
-- `setup_db()`: Initializes the SQLite database and creates the necessary schema for storing Gambio IDs.
-
-Usage:
-To run the application, execute the script. Ensure that the required dependencies (PyQt6, Selenium, and SQLite) are
-installed and that the appropriate web driver is available in the specified path.
-"""
-
 import os
 import sqlite3
 import sys
+from datetime import datetime
 
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QWidget, QComboBox, QLineEdit,
-    QDialog, QProgressBar, QMessageBox,
-    QTextEdit, QGridLayout, QApplication, QVBoxLayout, QPushButton, QCheckBox, QLabel
+    QApplication, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QTextEdit,
+    QMessageBox, QProgressBar, QDialog, QCheckBox, QPlainTextEdit, QComboBox, QLineEdit, QFrame
 )
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -55,33 +22,17 @@ password = "Graphicart#1"
 
 
 def resource_path(relative_path):
-    """
-    Resource path utility function.
-
-    This function returns the absolute path of a resource file based on whether the application is running as a
-    frozen executable or in a normal environment.
-
-    Args:
-        relative_path (str): The relative path of the resource file.
-
-    Returns:
-        str: The absolute path of the resource file.
-    """
     if getattr(sys, 'frozen', False):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.abspath(relative_path)
+        return os.path.join(os.path.dirname(sys.executable), relative_path)
+    else:
+        return os.path.join(os.path.dirname(__file__), relative_path)
+
+
+DB_PATH = resource_path("GambioIDs.db")
 
 
 def setup_db():
-    """
-    Set up the database schema if it does not already exist.
-
-    This function creates a SQLite database and a table for storing Gambio IDs if they are not already present.
-
-    Returns:
-        None
-    """
-    with sqlite3.connect("GambioIDs.db") as conn:
+    with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute(
             """
@@ -96,125 +47,67 @@ def setup_db():
 
 
 class GUI(QWidget):
-    """
-    GUI class for the Gambio ID Converter application.
-
-    This class initializes the user interface for the application, allowing users to select brands and categories,
-    exclude articles, and convert article numbers to Gambio IDs.
-
-    Args:
-        scrape: An instance of the Scrape class used for web scraping operations.
-    """
-
     def __init__(self, scrape):
         super().__init__()
-        self.title = "Gambio ID Konverter"
-        self.height = 500
-        self.width = 400
-        self.top = 100
-        self.left = 100
-
+        setup_db()
+        self.setWindowTitle("Gambio ID Konverter")
+        self.setGeometry(100, 100, 782, 600)
         self.scraper = scrape
-
+        self.include_duplicates = False
         self.category_data = {
             "Kamerasysteme + Objektive": {
-                "Nikon"    : {
-                    "Nikon Z"                 : {"initials": "NIVOA"},
-                    "Nikkor Z-Mount Objektive": {"initials": "NIJMA"},
-                    "Nikon DSLR"              : {"initials": "NIVBA"},
-                    "Nikkor F-Mount Objektive": {"initials": "NIJAA"},
-                    "Nikon Blitzgeräte"       : {"initials": "NIFSA"},
-                    "Nikon Coolpix"           : {"initials": "NIVQA"}
-                },
-                "Sony"     : {
-                    "Sony E-Mount Kameras"  : {"initials": "SOILCE"},
-                    "Sony E-Mount Objektive": {"initials": "SOSEL"},
-                    "Sony Video Kameras"    : {"initials": "SOILME"},
-                    "Sony Kompaktkameras"   : {"initials": "SOZV & SODSC"}
-                },
-                "Fujifilm" : {
-                    "Fujifilm GFX Kameras"  : {"initials": "FJ"},
-                    "Fujifilm GFX Objektive": {"initials": "FJ"},
-                    "Fujifilm X Kameras"    : {"initials": "FJ"}
-                },
-                "Phase One": {
-                    "Phase One IQ Backs"        : {"initials": "PO"},
-                    "Phase One XF Camera System": {"initials": "PO"}
-                },
-                "Cambo"    : {
-                    "Cambo Wide RS": {"initials": "CA"},
-                    "Cambo ACTUS"  : {"initials": "CA"}
-                },
-                "Leica"    : {
-                    "Leica M & Objektive": {"initials": "n/a"},
-                    "Leica Q"            : {"initials": "n/a"}
-                }
+                "Nikon": {"Nikon Z": {"initials": "NIVOA"}, "Nikon DSLR": {"initials": "NIVBA"}},
+                "Sony" : {"Sony E-Mount Kameras": {"initials": "SOILCE"}, "Sony Video Kameras": {"initials": "SOILME"}}
             }
         }
-
+        self.brand_data = {
+            "Marken": {
+                "Nikon": {"NIVOA", "NIJMA", "NIVBA", "NIJAA"},
+                "Sony" : {"SOILCE", "SOSEL", "SOLA", "SOILME", "SOZV", "SODSC"}
+            }
+        }
         self.main_icon_path = resource_path('main_icon.ico')
         self.loading_icon_path = resource_path('loading_icon.ico')
-
+        self.setWindowIcon(QIcon(self.main_icon_path))
         self.initUI()
 
     def initUI(self):
-        """
-        Initialize the user interface components.
-
-        This method sets up the main layout, buttons, dropdowns, and connects signals to their respective slots.
-
-        Returns:
-            None
-        """
-        self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-        self.setWindowIcon(QIcon(self.main_icon_path))
-
         main_layout = QVBoxLayout()
 
-        # Rescrape button
-        rescrape_button = QPushButton("Datenbank aktualisieren")
+        rescrape_button = QPushButton("Datenbank aktualisieren", self)
+        rescrape_button.setStyleSheet("QPushButton { padding: 7px; }")
         rescrape_button.clicked.connect(self.open_progress_window)
         main_layout.addWidget(rescrape_button, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        # input interface
-        input_layout = QGridLayout()
+        self.last_updated_label = QLabel(self)
+        self.last_updated_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.last_updated_label.setStyleSheet("QLabel { border-radius: 5px; padding: 5px; }")
+        main_layout.addWidget(self.last_updated_label)
 
-        # Mode switch
-        toggle_layout = ModeSwitchGUI()
-        main_layout.addLayout(toggle_layout)
-        # Brand dropdown
-        self.marken_combobox = QComboBox(self)
-        self.marken_combobox.addItems(self.category_data["Kamerasysteme + Objektive"].keys())
-        main_layout.addWidget(QLabel("Marke"))
-        main_layout.addWidget(self.marken_combobox)
+        self.refresh_last_updated_label()
 
-        # Category dropdown
-        self.kategorie_combobox = QComboBox(self)
-        main_layout.addWidget(QLabel("Kategorie"))
-        main_layout.addWidget(self.kategorie_combobox)
+        self.tabs = QTabWidget()
+        main_layout.addWidget(self.tabs)
 
-        # Update subcategories based on brand selection
-        self.update_subcategories()
-        self.marken_combobox.currentTextChanged.connect(self.update_subcategories)
+        self.tabs.addTab(self.create_liste_tab(), "Liste")
+        self.tabs.addTab(self.create_kategorie_tab(), "Kategorie mit Ausnahmen")
+        self.tabs.addTab(self.create_marke_tab(), "Marke mit Ausnahmen")
+        self.tabs.addTab(self.create_nikon_ohne_occ_tab(), "Nikon ohne OCC, mit Ausnahmen")
+        self.tabs.addTab(self.create_sony_ohne_occ_tab(), "Sony ohne OCC, mit Ausnahmen")
 
-        # Exclude input
-        self.exclude_input = QLineEdit(self)
-        self.exclude_input.setToolTip("Artikelnummern (getrennt mit Kommas)")
-        main_layout.addWidget(QLabel("<b>Ausschliessen:</b>"))
-        main_layout.addWidget(self.exclude_input)
-
-        # Convert button
         convert_button = QPushButton("Konvertieren", self)
         convert_button.clicked.connect(self.convert_articles)
         main_layout.addWidget(convert_button, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        # Result display area
         self.result_textbox = QTextEdit(self)
         self.result_textbox.setReadOnly(True)
         main_layout.addWidget(self.result_textbox)
 
-        # Output layout for format change and copy buttons
+        self.missing_numbers_button = QPushButton("Fehlende Nummern anzeigen", self)
+        self.missing_numbers_button.clicked.connect(self.show_missing_numbers)
+        self.missing_numbers_button.setVisible(False)
+        main_layout.addWidget(self.missing_numbers_button, alignment=Qt.AlignmentFlag.AlignHCenter)
+
         output_layout = QHBoxLayout()
         format_button = QPushButton("Format ändern", self)
         format_button.clicked.connect(self.change_format)
@@ -224,115 +117,608 @@ class GUI(QWidget):
         output_layout.addWidget(copy_button)
         main_layout.addLayout(output_layout)
 
-        main_layout.addStretch()
+        self.include_duplicates_checkbox = QCheckBox("Doppelte Artikelnummern einschliessen", self)
+        self.include_duplicates_checkbox.stateChanged.connect(self.toggle_include_duplicates)
+        main_layout.addWidget(self.include_duplicates_checkbox, alignment=Qt.AlignmentFlag.AlignHCenter)
+
         self.setLayout(main_layout)
-        self.show()
+        self.tabs.currentChanged.connect(self.reset_output_on_tab_change)
 
-    def copy_to_clipboard(self):
-        """
-        Copy the text from the result textbox to the clipboard.
+    def toggle_include_duplicates(self):
+        self.include_duplicates = self.include_duplicates_checkbox.isChecked()
 
-        This method retrieves the text from the result display area and sets it to the system clipboard.
+    def refresh_last_updated_label(self):
+        db_path = DB_PATH
 
-        Returns:
-            None
-        """
+        if not os.path.exists(db_path):
+            self.last_updated_label.setText("Datenbank wurde noch nicht erstellt.")
+            return
+
+        try:
+            mod_time = os.path.getmtime(db_path)
+            readable = datetime.fromtimestamp(mod_time).strftime("%d.%m.%Y, %H:%M")
+            self.last_updated_label.setText(f"Datenbank zuletzt aktualisiert: <b>{readable}</b>")
+        except Exception as e:
+            self.last_updated_label.setText("Letztes Update: unbekannt")
+            print(f"[Fehler beim Lesen des Datums] {e}")
+
+    def paste_from_clipboard(self):
+        """Paste content from clipboard into the 'Liste' input."""
         clipboard = QApplication.clipboard()
-        clipboard.setText(self.result_textbox.toPlainText())
-
-    def change_format(self):
-        """
-        Change the format of the text in the result textbox.
-
-        This method processes the current text, removing empty lines and formatting it into a comma-separated string.
-
-        Returns:
-            None
-        """
-        current_text = self.result_textbox.toPlainText()
-        formatted_text = ", ".join([line for line in current_text.split("\n") if line])
-        self.result_textbox.setPlainText(formatted_text)
+        self.liste_input.setPlainText(clipboard.text())
 
     def update_subcategories(self):
-        """
-        Update the category dropdown based on the selected brand.
-
-        This method clears the current categories and populates the dropdown with subcategories corresponding to the
-        selected brand.
-
-        Returns:
-            None
-        """
         selected_brand = self.marken_combobox.currentText()
         self.kategorie_combobox.clear()
         if selected_brand in self.category_data["Kamerasysteme + Objektive"]:
             self.kategorie_combobox.addItems(self.category_data["Kamerasysteme + Objektive"][selected_brand].keys())
 
+    def create_liste_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout()
+
+        self.liste_input = QPlainTextEdit(self)
+        self.liste_input.setPlaceholderText("Artikelnummern einfügen: (eine pro Zeile).")
+        layout.addWidget(self.liste_input)
+
+        paste_button = QPushButton("Aus Zwischenablage einfügen", self)
+        paste_button.clicked.connect(self.paste_from_clipboard)
+        layout.addWidget(paste_button)
+
+        tab.setLayout(layout)
+        return tab
+
+    def create_kategorie_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout()
+
+        self.marken_combobox = QComboBox(self)
+        self.marken_combobox.addItems(self.category_data["Kamerasysteme + Objektive"].keys())
+        layout.addWidget(QLabel("Marke"))
+        layout.addWidget(self.marken_combobox)
+
+        self.kategorie_combobox = QComboBox(self)
+        layout.addWidget(QLabel("Kategorie"))
+        layout.addWidget(self.kategorie_combobox)
+
+        self.update_subcategories()
+        self.marken_combobox.currentTextChanged.connect(self.update_subcategories)
+
+        self.exclude_input = QLineEdit(self)
+        self.exclude_input.setPlaceholderText("Artikelnummern (getrennt mit Kommas)")
+        layout.addWidget(QLabel("<b>Ausschliessen:</b>"))
+        layout.addWidget(self.exclude_input)
+
+        tab.setLayout(layout)
+        return tab
+
+    def create_marke_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout()
+
+        self.marken_only_combobox = QComboBox(self)
+        self.marken_only_combobox.addItems(self.brand_data["Marken"].keys())
+        layout.addWidget(QLabel("Marke"))
+        layout.addWidget(self.marken_only_combobox)
+
+        self.marken_exclude_input = QLineEdit(self)
+        self.marken_exclude_input.setPlaceholderText("Artikelnummern (getrennt mit Kommas)")
+        layout.addWidget(QLabel("<b>Ausschliessen:</b>"))
+        layout.addWidget(self.marken_exclude_input)
+
+        layout.addStretch()
+        tab.setLayout(layout)
+        return tab
+
+    def create_nikon_ohne_occ_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout()
+
+        nikon_frame = QFrame()
+        nikon_frame_layout = QVBoxLayout()
+        nikon_frame.setStyleSheet("""
+            QFrame {
+                background-color: #FFE100;
+                color: #000000;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(10)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 76))
+        nikon_frame.setGraphicsEffect(shadow)
+
+        nikon_frame.setLayout(nikon_frame_layout)
+        title_label_1 = QLabel("<b>Alle 'NI%' (Nikon) Artikel</b>")
+        title_label_2 = QLabel("mit Ausnahme von 'NIOCC%' (Nikon Occasionen) und ausgeschlossene Artikeln")
+        title_label_1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label_2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        nikon_frame_layout.addWidget(title_label_1)
+        nikon_frame_layout.addWidget(title_label_2)
+        layout.addWidget(nikon_frame)
+
+        layout.addStretch()
+        self.marken_exclude_input = QLineEdit(self)
+        self.marken_exclude_input.setPlaceholderText("Artikelnummern (getrennt mit Kommas)")
+        layout.addWidget(QLabel("<b>Ausschliessen:</b>"))
+        layout.addWidget(self.marken_exclude_input)
+        layout.addStretch()
+
+        tab.setLayout(layout)
+        return tab
+
+    def create_sony_ohne_occ_tab(self):
+        tab = QWidget()
+        layout = QVBoxLayout()
+
+        sony_frame = QFrame()
+        sony_frame_layout = QVBoxLayout()
+        sony_frame.setStyleSheet("""
+            QFrame {
+                background-color: #dc9018;
+                color: #000000;
+                border-radius: 5px;
+                padding: 5px;
+            }
+        """)
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        from PyQt6.QtGui import QColor
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(10)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 76))
+        sony_frame.setGraphicsEffect(shadow)
+
+        sony_frame.setLayout(sony_frame_layout)
+        title_label_1 = QLabel("<b>Alle 'SO%' (Sony) Artikel</b>")
+        title_label_2 = QLabel("mit Ausnahme von 'OCCSO%' (Sony Occasionen) und ausgeschlossene Artikeln")
+        title_label_1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label_2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        sony_frame_layout.addWidget(title_label_1)
+        sony_frame_layout.addWidget(title_label_2)
+        layout.addWidget(sony_frame)
+
+        layout.addStretch()
+        self.marken_exclude_input = QLineEdit(self)
+        self.marken_exclude_input.setPlaceholderText("Artikelnummern (getrennt mit Kommas)")
+        layout.addWidget(QLabel("<b>Ausschliessen:</b>"))
+        layout.addWidget(self.marken_exclude_input)
+        layout.addStretch()
+
+        tab.setLayout(layout)
+        return tab
+
     def convert_articles(self):
+        try:
+            self.result_textbox.clear()
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("")
+
+            active_tab_index = self.tabs.currentIndex()
+
+            if active_tab_index == 0:
+                if input_data := self.liste_input.toPlainText().splitlines():
+                    self.query_database(input_data)
+                else:
+                    QMessageBox.warning(self, "Warnung", "Bitte geben Sie Artikelnummern ein.")
+
+            elif active_tab_index == 1:
+                selected_brand = self.marken_combobox.currentText()
+                selected_category = self.kategorie_combobox.currentText()
+                if not selected_brand or not selected_category:
+                    QMessageBox.warning(self, "Warnung", "Bitte wählen Sie eine Marke und Kategorie aus.")
+                    return
+                initials = self.category_data["Kamerasysteme + Objektive"][selected_brand][selected_category]["initials"]
+                excluded_articles = [art.strip() for art in self.exclude_input.text().split(",") if art.strip()]
+                self.query_database_with_exclusions(initials, excluded_articles)
+
+            elif active_tab_index == 2:
+                selected_brand = self.marken_only_combobox.currentText()
+                if not selected_brand:
+                    QMessageBox.warning(self, "Warnung", "Bitte wähle eine Marke aus.")
+                    return
+                initials_list = list(self.brand_data["Marken"][selected_brand])
+                excluded_articles = [art.strip() for art in self.marken_exclude_input.text().split(",") if art.strip()]
+                self.query_database_brands_with_exclusions(initials_list, excluded_articles)
+
+            elif active_tab_index == 3:
+                excluded_articles = [art.strip() for art in self.marken_exclude_input.text().split(",") if art.strip()]
+                self.query_database_all_nikon_with_exclusions(excluded_articles)
+
+            elif active_tab_index == 4:
+                excluded_articles = [art.strip() for art in self.marken_exclude_input.text().split(",") if art.strip()]
+                self.query_database_all_sony_with_exclusions(excluded_articles)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Fehler", str(e))
+
+    def query_database(self, article_numbers):
+        filtered_numbers = list({num.strip() for num in article_numbers if num.strip()})
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            query = """
+                SELECT {} gambioID, artNr
+                FROM gambioIDs
+                WHERE artNr IN ({})
+            """.format("" if self.include_duplicates else "DISTINCT", ",".join("?" for _ in filtered_numbers))
+            c.execute(query, filtered_numbers)
+            results = c.fetchall()
+
+            found_art_numbers = [row[1] for row in results]
+            missing_numbers = [num for num in filtered_numbers if num not in found_art_numbers]
+
+            if self.include_duplicates:
+                values = [str(row[0]) for row in results]
+            else:
+                unique_results = {}
+                for gambio_id, art_nr in results:
+                    if art_nr not in unique_results:
+                        unique_results[art_nr] = str(gambio_id)
+                values = list(unique_results.values())
+
+            expected_count = len(filtered_numbers)
+            output_count = len(values)
+
+            self.update_output_box(
+                "\n".join(values),
+                expected_count,
+                output_count,
+                missing_numbers,
+                excluded_count=0,
+                raw_results=results
+            )
+
+    def query_database_with_exclusions(self, initials, excluded_articles):
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            query = f"""
+                SELECT {"DISTINCT" if not self.include_duplicates else ""} gambioID, artNr
+                FROM gambioIDs
+                WHERE artNr LIKE ?
+            """
+            parameters = [f"{initials}%"]
+
+            if excluded_articles:
+                placeholders = ", ".join("?" for _ in excluded_articles)
+                query += f" AND artNr NOT IN ({placeholders})"
+                parameters.extend(excluded_articles)
+
+            c.execute(query, parameters)
+            results = c.fetchall()
+
+            # Fetch all possible numbers for comparison
+            c.execute("SELECT DISTINCT artNr FROM gambioIDs WHERE artNr LIKE ?", [f"{initials}%"])
+            all_possible_numbers = [row[0] for row in c.fetchall()]
+            found_art_numbers = [row[1] for row in results]
+            missing_numbers = [num for num in all_possible_numbers if num not in found_art_numbers]
+
+            actually_excluded = [art for art in excluded_articles if art in all_possible_numbers]
+
+            if self.include_duplicates:
+                values = [str(row[0]) for row in results]
+            else:
+                unique_results = {}
+                for gambio_id, art_nr in results:
+                    if art_nr not in unique_results:
+                        unique_results[art_nr] = str(gambio_id)
+                values = list(unique_results.values())
+
+            expected_count = len(all_possible_numbers) - len(actually_excluded)
+            output_count = len(values)
+
+            self.update_output_box(
+                "\n".join(values),
+                expected_count,
+                output_count,
+                missing_numbers,
+                excluded_count=len(actually_excluded),
+                raw_results=results
+            )
+
+    def query_database_brands_with_exclusions(self, initials_list, excluded_articles):
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+
+            like_clauses = " OR ".join(["artNr LIKE ?"] * len(initials_list))
+            query = f"""
+                SELECT {"DISTINCT" if not self.include_duplicates else ""} gambioID, artNr
+                FROM gambioIDs
+                WHERE ({like_clauses})
+            """
+            parameters = [f"{initial}%" for initial in initials_list]
+
+            if excluded_articles:
+                placeholders = ", ".join("?" for _ in excluded_articles)
+                query += f" AND artNr NOT IN ({placeholders})"
+                parameters.extend(excluded_articles)
+
+            c.execute(query, parameters)
+            results = c.fetchall()
+
+            # All possible article numbers
+            all_possible_numbers_query = f"""
+                SELECT DISTINCT artNr
+                FROM gambioIDs
+                WHERE ({like_clauses})
+            """
+            c.execute(all_possible_numbers_query, [f"{initial}%" for initial in initials_list])
+            all_possible_numbers = [row[0] for row in c.fetchall()]
+
+            found_art_numbers = [row[1] for row in results]
+            actually_excluded = [art for art in excluded_articles if art in all_possible_numbers]
+            missing_numbers = [
+                num for num in all_possible_numbers
+                if num not in found_art_numbers and num not in actually_excluded
+            ]
+
+            if self.include_duplicates:
+                values = [str(row[0]) for row in results]
+            else:
+                unique_results = {}
+                for gambio_id, art_nr in results:
+                    if art_nr not in unique_results:
+                        unique_results[art_nr] = str(gambio_id)
+                values = list(unique_results.values())
+
+            expected_count = len(all_possible_numbers) - len(actually_excluded)
+            output_count = len(values)
+
+            self.update_output_box(
+                "\n".join(values),
+                expected_count,
+                output_count,
+                missing_numbers,
+                excluded_count=len(actually_excluded),
+                raw_results=results
+            )
+
+    def query_database_all_nikon_with_exclusions(self, excluded_articles):
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            query = f"""
+                SELECT {"DISTINCT" if not self.include_duplicates else ""} gambioID, artNr
+                FROM gambioIDs
+                WHERE artNr LIKE 'NI%' AND artNr NOT LIKE 'NIOCC%'
+            """
+            parameters = []
+
+            if excluded_articles:
+                placeholders = ", ".join("?" for _ in excluded_articles)
+                query += f" AND artNr NOT IN ({placeholders})"
+                parameters.extend(excluded_articles)
+
+            c.execute(query, parameters)
+            results = c.fetchall()
+
+            c.execute("SELECT DISTINCT artNr FROM gambioIDs WHERE artNr LIKE 'NI%' AND artNr NOT LIKE 'NIOCC%'")
+            all_possible_numbers = [row[0] for row in c.fetchall()]
+
+            found_art_numbers = [row[1] for row in results]
+            actually_excluded = [art for art in excluded_articles if art in all_possible_numbers]
+            missing_numbers = [
+                num for num in all_possible_numbers
+                if num not in found_art_numbers and num not in actually_excluded
+            ]
+
+            if self.include_duplicates:
+                values = [str(row[0]) for row in results]
+            else:
+                unique_results = {}
+                for gambio_id, art_nr in results:
+                    if art_nr not in unique_results:
+                        unique_results[art_nr] = str(gambio_id)
+                values = list(unique_results.values())
+
+            expected_count = len(all_possible_numbers) - len(actually_excluded)
+            output_count = len(values)
+
+            self.update_output_box(
+                "\n".join(values),
+                expected_count,
+                output_count,
+                missing_numbers,
+                excluded_count=len(actually_excluded),
+                raw_results=results
+            )
+
+    def query_database_all_sony_with_exclusions(self, excluded_articles):
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            query = f"""
+                SELECT {"DISTINCT" if not self.include_duplicates else ""} gambioID, artNr
+                FROM gambioIDs
+                WHERE artNr LIKE 'SO%'
+            """
+            parameters = []
+
+            if excluded_articles:
+                placeholders = ", ".join("?" for _ in excluded_articles)
+                query += f" AND artNr NOT IN ({placeholders})"
+                parameters.extend(excluded_articles)
+
+            c.execute(query, parameters)
+            results = c.fetchall()
+
+            c.execute("SELECT DISTINCT artNr FROM gambioIDs WHERE artNr LIKE 'SO%'")
+            all_possible_numbers = [row[0] for row in c.fetchall()]
+
+            found_art_numbers = [row[1] for row in results]
+            actually_excluded = [art for art in excluded_articles if art in all_possible_numbers]
+            missing_numbers = [
+                num for num in all_possible_numbers
+                if num not in found_art_numbers and num not in actually_excluded
+            ]
+
+            if self.include_duplicates:
+                values = [str(row[0]) for row in results]
+            else:
+                unique_results = {}
+                for gambio_id, art_nr in results:
+                    if art_nr not in unique_results:
+                        unique_results[art_nr] = str(gambio_id)
+                values = list(unique_results.values())
+
+            expected_count = len(all_possible_numbers) - len(actually_excluded)
+            output_count = len(values)
+
+            self.update_output_box(
+                "\n".join(values),
+                expected_count,
+                output_count,
+                missing_numbers,
+                excluded_count=len(actually_excluded),
+                raw_results=results
+            )
+
+    def update_output_box(
+            self,
+            results_text,
+            expected_count,
+            output_count,
+            missing_numbers=None,
+            excluded_count=0,
+            raw_results=None
+    ):
+        self.result_textbox.setText(results_text)
+
+        if not hasattr(self, 'status_label'):
+            self.status_label = QLabel(self)
+            self.status_label.setTextFormat(Qt.TextFormat.RichText)
+            self.layout().insertWidget(self.layout().indexOf(self.result_textbox), self.status_label)
+            self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        base_style = """
+        QTextEdit {{
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 5px;
+            border: 2px solid {border_color};
+        }}
+        QScrollBar:vertical {{
+            background: #2b2b2b;
+            width: 10px;
+            margin: 2px;
+            border-radius: 5px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: #5a5a5a;
+            border-radius: 5px;
+            min-height: 20px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: #888888;
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0;
+        }}
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+            background: none;
+        }}
         """
-        Convert selected articles to Gambio IDs.
 
-        This method retrieves the selected brand and category, processes excluded articles, and queries the database
-        for matching Gambio IDs.
+        if self.include_duplicates_checkbox.isChecked():
+            results_text = "<br>".join(str(row[0]) for row in raw_results)
+            output_count = len(raw_results)
+            expected_count += len([row for row in raw_results if row[1] in [r[1] for r in raw_results]])  # estimate
+            duplicate_notice = ""  # no warning when duplicates are allowed
+        else:
+            unique_results = {row[1]: str(row[0]) for row in raw_results}
+            results_text = "<br>".join(unique_results.values())
+            output_count = len(unique_results)
+            from collections import Counter
+            artnr_counts = Counter(row[1] for row in raw_results)
+            duplicates = [artnr for artnr, count in artnr_counts.items() if count > 1]
+            if duplicates:
+                total_extras = sum(count - 1 for artnr, count in artnr_counts.items() if count > 1)
+                duplicate_notice = (
+                    f"<br>\u26a0\ufe0f <b>{len(duplicates)}</b> doppelte Artikelnummern erkannt \u26a0\ufe0f"
+                    f"<br>(<b>{total_extras}</b> zusätzliche Einträge, nur jeweils erste übernommen)"
+                )
+            else:
+                duplicate_notice = ""
 
-        Returns:
-            None
-        """
+        self.result_textbox.setText(results_text)
 
-        selected_brand = self.marken_combobox.currentText()
-        selected_category = self.kategorie_combobox.currentText()
-        excluded_articles = [article.strip() for article in self.exclude_input.text().split(",") if article.strip()]
-        initials = self.category_data["Kamerasysteme + Objektive"][selected_brand][selected_category].get("initials")
+        total_display = output_count + excluded_count if self.include_duplicates_checkbox.isChecked() else expected_count + excluded_count
 
-        if initials == "n/a":
-            QMessageBox.warning(self, "Kategorie nicht verwendbar",
-                                "Die ausgewählte Kategorie kann nicht verwendet werden.")
+        if self.include_duplicates_checkbox.isChecked():
+            self.result_textbox.setStyleSheet(base_style.format(border_color="green"))
+            self.status_label.setStyleSheet("color: green;")
+            summary = (
+                f"Total: <b>{output_count + excluded_count}</b> | Ausgeschlossen: <b>{excluded_count}</b> | Output: <b>{output_count}</b>")
+            self.status_label.setText(f"Alle Nummern Konvertiert<br>{summary}")
+            self.missing_numbers_button.setVisible(False)
+        else:
+            if expected_count == output_count:
+                self.result_textbox.setStyleSheet(base_style.format(border_color="green"))
+                self.status_label.setStyleSheet("color: green;")
+            else:
+                self.result_textbox.setStyleSheet(base_style.format(border_color="red"))
+                self.status_label.setStyleSheet("color: red;")
+
+            summary = (
+                f"Total: <b>{expected_count + excluded_count}</b> | Ausgeschlossen: <b>{excluded_count}</b> | Output: <b>{output_count}</b>")
+            self.status_label.setText(
+                f"Erwartet: <b>{expected_count}</b> / Konvertiert: <b>{output_count}</b><br>{summary}{duplicate_notice}"
+            )
+            self.missing_numbers_button.setVisible(expected_count != output_count)
+
+        self.missing_numbers = missing_numbers or []
+
+    def show_missing_numbers(self):
+        """Display missing numbers in a pop-up window."""
+        if not self.missing_numbers:
+            QMessageBox.information(self, "Information", "Es fehlen keine Nummern.")
             return
 
-        try:
-            with sqlite3.connect("GambioIDs.db") as conn:
-                self.query_database(conn, initials, excluded_articles)
-        except Exception as e:
-            QMessageBox.critical(self, "Fehler", f"An error occurred when pulling from DB: {e}")
+        missing_text = "\n".join(self.missing_numbers)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Fehlende Nummern")
+        layout = QVBoxLayout(dialog)
 
-    def query_database(self, conn, initials, excluded_articles):
-        """
-        Query the database for Gambio IDs based on the selected criteria.
+        text_edit = QTextEdit(dialog)
+        text_edit.setPlainText(missing_text)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
 
-        This method executes a SQL query to retrieve Gambio IDs while considering excluded articles.
+        close_button = QPushButton("Schliessen", dialog)
+        close_button.clicked.connect(dialog.close)
+        layout.addWidget(close_button)
 
-        Args:
-            conn: The database connection object.
-            initials (str): The initials to filter Gambio IDs.
-            excluded_articles (list): A list of articles to exclude from the results.
+        dialog.setLayout(layout)
+        dialog.exec()
 
-        Returns:
-            None
-        """
-        c = conn.cursor()
-        query = "SELECT gambioID FROM gambioIDs WHERE artNr LIKE ?"
-        parameters = [f"{initials}%"]
+    def reset_output_on_tab_change(self):
+        """Reset the output box and status label when switching tabs."""
+        self.result_textbox.clear()
+        if hasattr(self, 'status_label'):
+            self.status_label.setText("")
 
-        if excluded_articles:
-            placeholders = ", ".join("?" for _ in excluded_articles)
-            query += f" AND artNr NOT IN ({placeholders})"
-            parameters.extend(excluded_articles)
+    def change_format(self):
+        """Format result output."""
+        current_text = self.result_textbox.toPlainText()
+        formatted_text = ", ".join(line.strip() for line in current_text.splitlines() if line.strip())
+        self.result_textbox.setPlainText(formatted_text)
 
-        c.execute(query, parameters)
-        gambio_ids = [str(row[0]) for row in c.fetchall()]
-        self.result_textbox.setText("\n".join(gambio_ids))
+    def copy_to_clipboard(self):
+        """Copy the result to clipboard."""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.result_textbox.toPlainText())
 
     def open_progress_window(self):
-        """
-        Open the progress window for scraping operations.
-
-        This method initializes and displays the progress window, connecting it to the scraping thread for updates.
-
-        Returns:
-            None
-        """
-        self.progress_window = ProgressWindow(self.loading_icon_path)  # Pass the icon path
+        """Open the progress window for scraping operations."""
+        self.progress_window = ProgressWindow(self.loading_icon_path, parent=self)  # Use the correct icon path
         self.progress_window.show()
+
+        # Start the scrape thread
         self.scrape_thread = ScrapeThread(self.scraper)
         self.scrape_thread.progress_updated.connect(self.progress_window.progress_bar.setValue)
         self.scrape_thread.scraping_completed.connect(self.progress_window.show_completion_message)
@@ -343,97 +729,37 @@ class GUI(QWidget):
         """
         Display an error message in a message box.
 
-        This method shows a critical error message dialog with the provided error message.
-
         Args:
             error_message (str): The error message to display.
-
-        Returns:
-            None
         """
         QMessageBox.critical(self, "Fehler", error_message)
 
-
-class ModeSwitchGUI(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Mode Switch Example")
-        self.setGeometry(100, 100, 300, 200)
-
-        # Main layout
-        self.toggle_layout = QVBoxLayout()
-
-        # Options with checkboxes
-        self.option1 = QCheckBox("Liste")
-        self.option2 = QCheckBox("Kategorie mit Ausnahmen")
-
-        # Make checkboxes non-interactive (user can't click directly)
-        self.option1.setEnabled(False)
-        self.option2.setEnabled(False)
-
-        # Initially, select option 1
-        self.option1.setChecked(True)
-
-        # Add checkboxes to layout
-        self.toggle_layout.addWidget(self.option1)
-        self.toggle_layout.addWidget(self.option2)
-
-        # "Modus wechseln" button
-        self.switch_button = QPushButton("Modus wechseln")
-        self.switch_button.clicked.connect(self.switch_mode)
-        self.toggle_layout.addWidget(self.switch_button)
-
-        # Add a placeholder for GUI elements specific to the selected mode
-        self.mode_specific_label = QLabel("Mode: Liste")
-        self.mode_specific_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.toggle_layout.addWidget(self.mode_specific_label)
-
-        return self.toggle_layout
-
-
-    def switch_mode(self):
-        """Switch between the two modes."""
-        if self.option1.isChecked():
-            # Switch to option 2
-            self.option1.setChecked(False)
-            self.option2.setChecked(True)
-            self.mode_specific_label.setText("Mode: Kategorie mit Ausnahmen")
-        else:
-            # Switch to option 1
-            self.option1.setChecked(True)
-            self.option2.setChecked(False)
-            self.mode_specific_label.setText("Mode: Liste")
 
 class ProgressWindow(QDialog):
     """
     Progress window for displaying scraping progress.
 
-    This class creates a dialog that shows the progress of the scraping operation, including a progress bar and
-    completion messages.
-
-    Args:
-        loading_icon_path (str): The path to the loading icon to be displayed in the window.
+    This class creates a dialog that shows the progress of the scraping operation,
+    including a progress bar and completion messages.
     """
 
-    def __init__(self, loading_icon_path):
+    def __init__(self, loading_icon_path, parent=None):
         super().__init__()
-        self.loading_icon_path = loading_icon_path  # Store the icon path
+        self.loading_icon_path = loading_icon_path
         self.initUI()
         self.setWindowIcon(QIcon(self.loading_icon_path))
 
+        # Center the window on the right side of the screen
         self.center_on_right_half()
 
     def initUI(self):
         """
         Initialize the user interface components for the progress window.
-
-        This method sets up the progress bar and its layout.
-
-        Returns:
-            None
         """
         self.setWindowTitle("Scraping Progress")
         self.setFixedSize(400, 200)
+
+        # Progress bar setup
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setGeometry(50, 50, 300, 30)
         self.progress_bar.setValue(0)
@@ -451,59 +777,59 @@ class ProgressWindow(QDialog):
                 box-shadow: 0 0 15px #00ff00;
             }
         """)
-        self.layout = QVBoxLayout()
-        self.layout.addWidget(self.progress_bar)
-        self.setLayout(self.layout)
+
+        # Layout for progress bar and optional buttons
+        layout = QVBoxLayout()
+        layout.addWidget(self.progress_bar)
+        self.setLayout(layout)
 
     def center_on_right_half(self):
         """
-        Center the progress window in the middle of the right half of the screen.
-
-        This method calculates the appropriate position for the window and moves it accordingly.
-
-        Returns:
-            None
+        Center the window on the right half of the primary screen.
         """
-        screen = QApplication.primaryScreen()  # Get the primary screen
-        screen_geometry = screen.geometry()  # Get the geometry of the screen
-        right_half_width = screen_geometry.width() // 2  # Width of the right half
-        x = right_half_width + (right_half_width - self.width()) // 2  # Center in the right half
-        y = (screen_geometry.height() - self.height()) // 2  # Center vertically
-        self.move(x, y)  # Move to the calculated position
+        screen = QApplication.primaryScreen()
+        screen_geometry = screen.geometry()
+
+        # Calculate the position for the right half of the screen
+        screen_width = screen_geometry.width()
+        screen_height = screen_geometry.height()
+        window_width = self.width()
+        window_height = self.height()
+
+        x = screen_width // 2 + (screen_width // 2 - window_width) // 2
+        y = (screen_height - window_height) // 2
+
+        # Move the window to the calculated position
+        self.move(x, y)
 
     def show_completion_message(self):
         """
         Display a completion message when the scraping is finished.
-
-        This method hides the progress bar and shows a message indicating that the database has been updated.
-
-        Returns:
-            None
         """
-        self.progress_bar.hide()
-        completion_label = QLabel("Datenbank aktualisiert", self)
-        completion_label.setStyleSheet("font-size: 20px; font-weight: bold; color: green;")
+        # Remove all widgets from the current layout
+        for i in reversed(range(self.layout().count())):
+            widget = self.layout().itemAt(i).widget()
+            if widget is not None:
+                widget.setParent(None)
+
+        # Add success label
+        completion_label = QLabel("✅ Datenbank erfolgreich aktualisiert!", self)
+        completion_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #00aa00;")
         completion_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(completion_label)
+        self.layout().addWidget(completion_label)
 
-        # Add a close button
+        # Add close button
         close_button = QPushButton("Schliessen", self)
-        close_button.clicked.connect(self.close)  # Connect the 'clicked' signal to the window's close slot
-        self.layout.addWidget(close_button)
+        close_button.clicked.connect(self.close)
+        self.layout().addWidget(close_button)
 
-        self.adjustSize()
+        # Trigger label refresh in parent (if exists)
+        if self.parent() and hasattr(self.parent(), 'refresh_last_updated_label'):
+            self.parent().refresh_last_updated_label()
 
 
 class ScrapeThread(QThread):
-    """
-    Thread for performing scraping operations.
-
-    This class handles the execution of scraping tasks in a separate thread, allowing the GUI to remain responsive
-    during long-running operations.
-
-    Args:
-        scraper: An instance of the Scrape class used for web scraping operations.
-    """
+    """Thread for performing scraping operations."""
     progress_updated = pyqtSignal(int)
     scraping_completed = pyqtSignal()
     error_occurred = pyqtSignal(str)
@@ -513,15 +839,7 @@ class ScrapeThread(QThread):
         self.scraper = scraper
 
     def run(self):
-        """
-        Execute the scraping operations.
-
-        This method runs the scraping process, including setting up the driver, logging in, and navigating to the
-        target page.
-
-        Returns:
-            None
-        """
+        """Execute the scraping operations."""
         try:
             self.scraper.setup_driver()
             self.scraper.login(email, password)
@@ -529,121 +847,67 @@ class ScrapeThread(QThread):
             self.scraping_completed.emit()
         except Exception as e:
             self.error_occurred.emit(str(e))
+        finally:
+            if hasattr(self.scraper, 'driver'):
+                self.scraper.driver.quit()
 
 
 class Scrape:
-    """
-    Scrape class for handling web scraping operations.
-
-    This class manages the setup of the web driver, login process, and data retrieval from the target website.
-
-    Args:
-        None
-    """
+    """Scrape class for handling web scraping operations."""
 
     def setup_driver(self):
-        """
-        Set up the web driver for scraping.
-
-        This method initializes the Chrome web driver with the appropriate options and navigates to the target website.
-
-        Returns:
-            None
-        """
+        """Set up the web driver for scraping."""
         base_path = sys._MEIPASS if getattr(sys, "frozen", False) else os.path.dirname(os.path.abspath(__file__))
         chromedriver_path = os.path.join(base_path, 'chromedriver.exe')
-        chrome_options = webdriver.ChromeOptions()
-        chrome_options.binary_location = os.path.join(base_path, 'chrome', 'win64-118.0.5993.70', 'chrome-win64',
-                                                      'chrome.exe')
+        chrome_binary_path = os.path.join(base_path, 'chrome', 'win64-118.0.5993.70', 'chrome-win64', 'chrome.exe')
+
+        options = webdriver.ChromeOptions()
+        options.binary_location = chrome_binary_path  # Use the specific Chrome binary
         service = Service(chromedriver_path)
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-        self.driver.get("https://www.graphicart.ch/shop/de/")
 
-    def wait(self, condition, time=10):
-        """
-        Wait for a specific condition to be met.
-
-        This method blocks execution until the specified condition is met or the timeout occurs.
-
-        Args:
-            condition: The condition to wait for.
-            time (int): The maximum time to wait in seconds.
-
-        Returns:
-            The result of the condition when it is met.
-        """
-        return WebDriverWait(self.driver, time).until(condition)
+        self.driver = webdriver.Chrome(service=service, options=options)
 
     def login(self, email, password):
-        """
-        Perform login to the target website.
-
-        This method interacts with the web elements to enter the email and password, and submits the login form.
-
-        Args:
-            email (str): The email address for login.
-            password (str): The password for login.
-
-        Returns:
-            None
-        """
-        kundenlogin_button = self.wait(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'a.dropdown-toggle[title="Anmeldung"]')))
+        """Log in to the website."""
+        self.driver.get("https://www.graphicart.ch/shop/de/")
+        kundenlogin_button = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'a.dropdown-toggle[title="Anmeldung"]'))
+        )
         kundenlogin_button.click()
-        email_field = self.wait(EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-username')))
-        email_field.send_keys(email)
-        password_field = self.wait(EC.presence_of_element_located((By.ID, 'box-login-dropdown-login-password')))
-        password_field.send_keys(password)
-        login_button = self.wait(EC.presence_of_element_located((By.XPATH, '//input[@value="Anmelden"]')))
-        login_button.click()
+        self.driver.find_element(By.ID, "box-login-dropdown-login-username").send_keys(email)
+        self.driver.find_element(By.ID, "box-login-dropdown-login-password").send_keys(password)
+        self.driver.find_element(By.XPATH, '//input[@value="Anmelden"]').click()
 
     def navigate_gambio(self, progress_signal):
-        """
-        Navigate to the Gambio admin page and scrape data.
+        """Navigate to the Gambio admin page and scrape data."""
+        with sqlite3.connect(DB_PATH) as conn:
 
-        This method retrieves product data from the Gambio admin page and emits progress updates.
-
-        Args:
-            progress_signal: A signal to update the progress bar.
-
-        Returns:
-            None
-        """
-        with sqlite3.connect("GambioIDs.db") as conn:
             c = conn.cursor()
             self.driver.get("https://www.graphicart.ch/shop/admin/validproducts.php")
-            self.wait(EC.visibility_of_element_located((By.CSS_SELECTOR, ".pageHeading")))
-            list_container = self.wait(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, "body > table:nth-child(1) > tbody:nth-child(1)")))
-            rows = list_container.find_elements(By.CSS_SELECTOR, "tr")[2:]
+            rows = self.driver.find_elements(By.CSS_SELECTOR, "table:nth-child(1) tr")[2:]
             total_rows = len(rows)
 
-            if total_rows == 0:
-                print("No rows found for scraping.")
-                return
-
             for index, row in enumerate(rows):
-                columns = row.find_elements(By.CSS_SELECTOR, "td")
-                gambio_id = columns[0].text
-                art_name = columns[1].text
-                art_nr = columns[2].text
+                cols = row.find_elements(By.TAG_NAME, "td")
+                gambio_id = cols[0].text
+                art_name = cols[1].text
+                art_nr = cols[2].text
                 c.execute("INSERT OR IGNORE INTO gambioIDs (gambioID, bezeichnung, artNr) VALUES (?, ?, ?)",
                           (gambio_id, art_name, art_nr))
                 if index % 10 == 0 or index == total_rows - 1:
                     conn.commit()
-                progress_percentage = int((index + 1) / total_rows * 100)
-                progress_signal.emit(progress_percentage)
+                progress_signal.emit(int((index + 1) / total_rows * 100))
 
             conn.commit()
-            self.driver.quit()
+        c.execute("UPDATE gambioIDs SET artNr = artNr WHERE gambioID = (SELECT gambioID FROM gambioIDs LIMIT 1)")
+        conn.commit()
+        self.driver.quit()
 
 
-if __name__ == '__main__':
-    try:
-        app = QApplication(sys.argv)
-        setup_db()
-        scrape = Scrape()
-        ex = GUI(scrape)
-        sys.exit(app.exec())
-    except Exception as e:
-        print(f"Error occurred: {e}")
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    setup_db()
+    scraper = Scrape()
+    gui = GUI(scraper)
+    gui.show()
+    sys.exit(app.exec())
